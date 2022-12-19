@@ -18,7 +18,7 @@ class TestEx4(unittest.TestCase):
         assert result == [1]
 
     def test_ex4_case4(self):
-        result = duplicate([-1,-2,-2,-4,-5,-6,-7,-4,-1])
+        result = duplicate([-1,-2,-2,-2,-4,-5,-6,-2,-7,-4,-4,-1])
         assert result == [-1,-2,-4]
 
 
