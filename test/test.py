@@ -15,11 +15,11 @@ class TestEx4(unittest.TestCase):
     
     def test_ex4_case3(self):
         result = duplicate([1,2,3,4,5,6,7,8,1])
-        assert result == "Duplicate"
+        assert result == [1]
 
     def test_ex4_case4(self):
-        result = duplicate([-1,-2,-3,-4,-5,-6,-7,-8,-1])
-        assert result == "Duplicate"
+        result = duplicate([-1,-2,-2,-4,-5,-6,-7,-4,-1])
+        assert result == [-1,-2,-4]
 
 
 class TestEx5(unittest.TestCase):
