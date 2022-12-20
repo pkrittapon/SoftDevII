@@ -16,6 +16,8 @@ def transpose(matrix):
     return(table)
 
 def create_each_table(data):
+    if len(data) == 0:
+        return None
     table_number = int(data[0])
     line_read = 1
     result = []
@@ -42,7 +44,6 @@ def check_in_table(matrix):
                     if sum_part_row(row,index,width) == 10 :
                         catch_ten += 1
     return catch_ten
-    
     # for j in range(table_size):
     #     table.append([int(n)for n in contents[line_read].split()])
     #     line_read += 1
