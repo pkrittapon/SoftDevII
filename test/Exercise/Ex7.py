@@ -1,20 +1,8 @@
-def formula(files):
-    A = set()
-    c1 = 0
-    c2 = 0
-
-    for i in range(len(files)):
-        if i == 0:
-            c1 = int(files[i].split(" ")[1])
-            c2 = int(files[i].split(" ")[2])
-        else:
-            A.add(int(files[i]))
-
-    a = sorted(list(A)) 
+def find_x1268(a,c1,c2):
+    a = sorted(a)
     x12 = []
     x68 = []
     x1268 = []  
-
     for i in range(0, len(a)-1):
         for j in range(i+1, len(a)):
             if a[j] + a[i] == c1:
@@ -30,7 +18,19 @@ def formula(files):
         for j in x68:
             if not (i[0] in j or i[1] in j):
                 x1268.append([i[0],i[1],j[0],j[1]])
+    return x1268
 
+def formula(files):
+    A = set()
+    c1 = 0
+    c2 = 0
+    for i in range(len(files)):
+        if i == 0:
+            c1 = int(files[i].split(" ")[1])
+            c2 = int(files[i].split(" ")[2])
+        else:
+            A.add(int(files[i]))
+    x1268 = find_x1268(list(A),c1,c2) 
     x = {}
     x_key_value = []
     for i in x1268:
@@ -40,7 +40,7 @@ def formula(files):
             "x6":i[2],
             "x8":i[3]
         })
-        remain = sorted(list((set(a)-set(i))))#list without x1 x2 x6 x8
+        remain = sorted(list((A-set(i))))#list without x1 x2 x6 x8
         for j in range(0, len(remain)-1):
             for k in range(j+1, len(remain)):
                 if remain[k] - remain[j] == x["x1"]:
@@ -59,7 +59,6 @@ def formula(files):
                                 x_key_value.append(sorted(x.items()))
     results = []
     result = []
-
     for i in x_key_value:
         for j in i:
             result.append(j[1])
