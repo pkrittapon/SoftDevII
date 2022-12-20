@@ -1,6 +1,7 @@
 import unittest
 from Exercise.Ex4 import duplicate
 from Exercise.Ex5 import sum_zero
+from Exercise.Ex6 import sum_part_row,transpose,create_each_table,check_in_table
 from Exercise.Ex7 import formula,find_x1268
 
 class TestEx4(unittest.TestCase):
@@ -42,7 +43,51 @@ class TestEx5(unittest.TestCase):
 
 
 class TestEx6(unittest.TestCase):
-    pass
+    import os
+    path = os.getcwd()
+
+    def test_ex6_func_create_each_table(self):
+        file = open(self.path + "\\text\\Ex6input.txt", "r")
+        contents = file.readlines()
+        file.close()
+        result = create_each_table(contents)
+        assert result == [4,10,7,180]
+    
+    def test_ex6_func_sum_part_row1(self):
+        result = sum_part_row([1,2,3,4,5,6,7,8,9,10],0,9)
+        assert result == 55
+
+    def test_ex6_func_sum_part_row2(self):
+        result = sum_part_row([1],0,0)
+        assert result == 1
+
+    def test_ex6_func_sum_part_row3(self):
+        result = sum_part_row([],0,0)
+        assert result == 0
+
+    def test_ex6_func_transpose1(self):
+        result = transpose([[1,2,3,4],[1,2,3,4],[1,2,3,4],[1,2,3,4]])
+        assert result == [[1,1,1,1],[2,2,2,2],[3,3,3,3],[4,4,4,4]]
+    
+    def test_ex6_func_transpose2(self):
+        result = transpose([[1]])
+        assert result == [[1]]
+    
+    def test_ex6_func_transpose3(self):
+        result = transpose([[1,2],[1,2],[1,2]])
+        assert result == [[1,1,1],[2,2,2]]
+
+    def test_ex6_func_check_in_table1(self):
+        result = check_in_table([[1,2,3,4],[1,2,3,4],[1,2,3,4],[1,2,3,4]])
+        assert result == 4
+
+    def test_ex6_func_check_in_table2(self):
+        result = check_in_table([[1,3,5,7],[2,4,8,2],[6,3,1,1],[2,3,5,6]])
+        assert result == 7
+
+    def test_ex6_func_check_in_table3(self):
+        result = check_in_table([[5,5],[5,5]])
+        assert result == 4
 
 
 class TestEx7(unittest.TestCase):
