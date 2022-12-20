@@ -1,7 +1,7 @@
 import unittest
 from Exercise.Ex4 import duplicate
 from Exercise.Ex5 import sum_zero
-from Exercise.Ex7 import formula
+from Exercise.Ex7 import formula,find_x1268
 
 class TestEx4(unittest.TestCase):
 
@@ -48,29 +48,41 @@ class TestEx6(unittest.TestCase):
 class TestEx7(unittest.TestCase):
     import os
     path = os.getcwd()
+
+    def test_ex7_find_x1268_case1(self):
+        result = find_x1268([50, 150, 90, 140, 40, 30, 70, 20],200,-10)
+        assert [50, 150, 30, 20] in result and [150, 50, 40, 30] in result
+
+    def test_ex7_find_x1268_case2(self):
+        result = find_x1268([50, 150, 90, 140, 40, 30, 70, 20],100,100)
+        assert [30, 70, 50, 150] in result and [70, 30, 40, 140] in result
+
+    def test_ex7_find_x1268_case3(self):
+        result = find_x1268([50, 150, 90, 140, 40, 30, 70, 20],0,0)
+        assert len(result) == 0
     
-    def test_ex7_case1(self):
+    def test_ex7_result_case1(self):
         file = open(self.path + "\\test\\text\\Ex7test1.txt", "r")
         contents = file.readlines()
         file.close()
         result = formula(contents)
         assert [50,150,20,70,90,40,130,30] in result
 
-    def test_ex7_case2(self):
+    def test_ex7_result_case2(self):
         file = open(self.path + "\\test\\text\\Ex7test1.txt", "r")
         contents = file.readlines()
         file.close()
         result = formula(contents)
         assert [70,130,20,90,50,150,200,140] in result
 
-    def test_ex7_case3(self):
+    def test_ex7_result_case3(self):
         file = open(self.path + "\\test\\text\\Ex7test2.txt", "r")
         contents = file.readlines()
         file.close()
         result = formula(contents)
         assert result == []
 
-    def test_ex7_case4(self):
+    def test_ex7_result_case4(self):
         file = open(self.path + "\\test\\text\\Ex7test3.txt", "r")
         contents = file.readlines()
         file.close()
