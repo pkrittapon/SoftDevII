@@ -3,6 +3,7 @@ from data.function import Stock,Categories
 import unittest
 from unittest.mock import MagicMock,patch
 import pandas as pd
+import sqlite3
 
 def get_stock_and_crypto_data(name):
     import yfinance as yf
@@ -79,10 +80,10 @@ class test_pull_data(unittest.TestCase):
                 'Close': [49.75,52.0,48.5],
                 'Adj Close':[49.75,51.75,48.5],
                 'Volume':[0,0,0]}
-
-        data_date = pd.DataFrame(data, index=[pd.to_datetime('2022-12-25 09:30:00'),
+        Datetime = [pd.to_datetime('2022-12-25 09:30:00'),
                                         pd.to_datetime('2022-12-26 10:30:00'),
-                                        pd.to_datetime('2022-12-27 15:30:00')])
+                                        pd.to_datetime('2022-12-27 15:30:00')]
+        data_date = pd.DataFrame(data, index=Datetime)
 
         yfinance_mock.download.return_value = data_date
         with unittest.mock.patch('yfinance.download',yfinance_mock.download):
@@ -151,12 +152,109 @@ class test_convert_price_data(unittest.TestCase):
                                             'close' : [48.5,25.0],
                                             'volume' : [123,5430]}))
 
-class test_category(unittest.TestCase):
+class TestCategories(unittest.TestCase):
+    
     def test_get_all_stock(self):
-        pass
+        mock_connect = MagicMock()
+        sqlite3.connect = mock_connect
+        mock_conn = MagicMock()
+        mock_connect.return_value = mock_conn
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = [('AOT',),('PTT',)] 
+
+        result = Categories().get_all_stock()
+        self.assertEqual(result, ['AOT','PTT'])
+        mock_connect.assert_called_once_with('stock.db', timeout=10)
+        mock_cursor.execute.assert_called_once_with("SELECT symbol FROM stock")
+        mock_cursor.fetchall.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    def test_get_all_stock_empty(self):
+        mock_connect = MagicMock()
+        sqlite3.connect = mock_connect
+        mock_conn = MagicMock()
+        mock_connect.return_value = mock_conn
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = [] 
+
+        result = Categories().get_all_stock()
+        self.assertEqual(result, [])
+        mock_connect.assert_called_once_with('stock.db', timeout=10)
+        mock_cursor.execute.assert_called_once_with("SELECT symbol FROM stock")
+        mock_cursor.fetchall.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    def test_get_all_stock_OneStock(self):
+        mock_connect = MagicMock()
+        sqlite3.connect = mock_connect
+        mock_conn = MagicMock()
+        mock_connect.return_value = mock_conn
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = [('AOT',)] 
+
+        result = Categories().get_all_stock()
+        self.assertEqual(result, ['AOT'])
+        mock_connect.assert_called_once_with('stock.db', timeout=10)
+        mock_cursor.execute.assert_called_once_with("SELECT symbol FROM stock")
+        mock_cursor.fetchall.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    def test_get_all_stock_in_sector(self):
+        mock_connect = MagicMock()
+        sqlite3.connect = mock_connect
+        mock_conn = MagicMock()
+        mock_connect.return_value = mock_conn
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = [('AOT',),('PTT',)] 
+
+        result = Categories().get_all_stock_in_sector("AGRI")
+        self.assertEqual(result, ['AOT','PTT'])
+        mock_connect.assert_called_once_with('stock.db', timeout=10)
+        mock_cursor.execute.assert_called_once_with("SELECT symbol FROM stock WHERE sector = 'AGRI'")
+        mock_cursor.fetchall.assert_called_once()
+        mock_conn.close.assert_called_once()
 
 
+class TestStock(unittest.TestCase):
 
+    def test_get_stock_id(self):
+        mock_connect = MagicMock()
+        sqlite3.connect = mock_connect
+        mock_conn = MagicMock()
+        mock_connect.return_value = mock_conn
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = [(1,)] 
+
+        aot = Stock("AOT")
+        result = aot.get_stock_id()
+        self.assertEqual(result, 1)
+        mock_connect.assert_called_once_with('stock.db', timeout=10)
+        mock_cursor.execute.assert_called_once_with("SELECT stock_id FROM stock WHERE symbol = 'AOT'")
+        mock_cursor.fetchall.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    def test_get_stock_price(self):
+        Stock.get_stock_id = MagicMock(return_value=1)
+        mock_connect = MagicMock()
+        sqlite3.connect = mock_connect
+        mock_conn = MagicMock()
+        mock_connect.return_value = mock_conn
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = [(40.5,)] 
+
+        aot = Stock("AOT")
+        result = aot.get_stock_price()
+        self.assertEqual(result, 40.5)
+        mock_connect.assert_called_once_with('stock.db', timeout=10)
+        mock_cursor.execute.assert_called_once_with("SELECT close FROM price WHERE stockdata = 1 order by [datetime] desc limit 1")
+        mock_cursor.fetchall.assert_called_once()
+        mock_conn.close.assert_called_once()
 
 
 
