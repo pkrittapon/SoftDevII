@@ -33,7 +33,9 @@ class Categories:
         cursor.execute(f"SELECT index_id FROM [index] WHERE symbol = '{symbol}'")
         data = cursor.fetchall()
         conn.close()
-        return data[0][0]
+        if len(data) != 0:
+            return data[0][0]
+        return []
 
     def get_industry_id(self,symbol):
         """return industry id"""
@@ -45,7 +47,9 @@ class Categories:
         cursor.execute(f"SELECT industry_id FROM industry WHERE symbol = '{symbol}'")
         data = cursor.fetchall()
         conn.close()
-        return data[0][0]
+        if len(data) != 0:
+            return data[0][0]
+        return []
     
     def get_sector_id(self,symbol):
         """return sector id""" 
@@ -57,7 +61,9 @@ class Categories:
         cursor.execute(f"SELECT sector_id FROM sector WHERE symbol = '{symbol}'")
         data = cursor.fetchall()
         conn.close()
-        return data[0][0]
+        if len(data) != 0:
+            return data[0][0]
+        return []
 
     def insert_stock(self,stock,index,industry,sector):
         """insert new stock to database"""
@@ -162,14 +168,23 @@ class Stock:
             self.basetable = 'stock'
             self.type = 'stock'
             self.price = '.bk'
+            self.news_table = 'set_news'
+            self.relation_table = 'many_set_news'
+            self.location_table = 'set_location'
         if index == 'NASDAQ':
             self.basetable = 'stock_nasdaq'
             self.type = 'stock'
             self.price = ''
+            self.news_table = 'nasdaq_news'
+            self.relation_table = 'many_nasdaq_news'
+            self.location_table = 'nasdaq_location'
         if index == 'CRYPTO':
             self.basetable = 'crypto'
             self.type = 'crypto'
             self.price = '-USD'
+            self.news_table = 'crypto_news'
+            self.relation_table = 'many_crypto_news'
+            self.location_table = 'crypto_location'
         self.symbol = symbol
     
     def insert_new_stock(self,stock):
@@ -188,8 +203,21 @@ class Stock:
         cursor.execute(f"SELECT {self.type}_id FROM {self.basetable} WHERE symbol = '{self.symbol}'")
         data = cursor.fetchall()
         conn.close()
-        return data[0][0]
-
+        if len(data) != 0:
+            return data[0][0]
+        return []
+    
+    def get_stock_name(self):
+        id = self.get_stock_id()
+        conn = sqlite3.connect('stock.db',timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT about FROM {self.basetable} WHERE symbol = '{self.symbol}'")
+        data = cursor.fetchall()
+        conn.close()
+        if len(data) != 0:
+            return data[0][0]
+        return []
+    
     def delete(self):
         "delete stock from database"
         conn = sqlite3.connect('stock.db',timeout=10)
@@ -220,7 +248,25 @@ class Stock:
         cursor.execute(f"SELECT close FROM {table} WHERE {self.type}_id = {id} order by [datetime] desc limit 1")
         data = cursor.fetchall()
         conn.close()
-        return data[0][0]
+        if len(data) != 0:
+            return data[0][0]
+        return []
+    
+    def get_percent_change(self,**kwargs):
+        """return the latest price of stock"""
+        interval = kwargs.get('interval','1h')
+        id = self.get_stock_id()
+        table = self.table(interval)
+        conn = sqlite3.connect('stock.db',timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT close FROM {table} WHERE {self.type}_id = {id} order by [datetime] desc limit 2")
+        data = cursor.fetchall()
+        conn.close()
+        data = [i[0] for i in data]
+        if len(data) != 0:
+            percent = ((data[0]-data[1])/data[1])*100
+            return percent
+        return None
 
     def latest_update_time(self, **kwargs):
         """return the latest update time of stock"""
@@ -232,7 +278,9 @@ class Stock:
         cursor.execute(f"SELECT DISTINCT max([datetime]) from {table} WHERE {self.type}_id = {id}")
         data = cursor.fetchall()
         conn.close()
-        return data[0][0]
+        if len(data) != 0:
+            return data[0][0]
+        return []
 
     def oldest_update_time(self,**kwargs):
         """return the oldest update time of stock"""
@@ -244,7 +292,9 @@ class Stock:
         cursor.execute(f"SELECT DISTINCT min([datetime]) from {table} WHERE {self.type}_id = {id}")
         data = cursor.fetchall()
         conn.close()
-        return data[0][0]
+        if len(data) != 0:
+            return data[0][0]
+        return []
 
     def get_all_datetime(self,**kwargs):
         interval = kwargs.get('interval','1h')
@@ -255,7 +305,9 @@ class Stock:
         cursor.execute(f"SELECT [datetime] from {table} WHERE {self.type}_id = {id}")
         data = cursor.fetchall()
         conn.close()
-        return [i[0] for i in data]
+        if len(data) != 0:
+            return data[0][0]
+        return []
 
     def get_all_stock_price(self,**kwargs):
         """return all stock price between the interval"""
@@ -269,7 +321,9 @@ class Stock:
         cursor.execute(f"SELECT [datetime],open,high,low,close,volume FROM {table} WHERE [datetime] BETWEEN '{start}' AND '{end}' AND {self.type}_id = {id}")
         data = cursor.fetchall()
         conn.close()
-        return data
+        if len(data) != 0:
+            return data[0][0]
+        return []
 
     def sector(self):
         """return the sector of this stock"""
@@ -278,7 +332,9 @@ class Stock:
         cursor.execute(f"SELECT sector.symbol FROM {self.basetable} LEFT JOIN sector ON {self.basetable}.sector_id = sector.sector_id WHERE {self.basetable}.symbol = '{self.symbol}'")
         data = cursor.fetchall()
         conn.close()
-        return data[0][0]
+        if len(data) != 0:
+            return data[0][0]
+        return []
 
     def industry(self):
         """return the industry of this stock"""
@@ -287,7 +343,9 @@ class Stock:
         cursor.execute(f"SELECT industry.symbol FROM {self.basetable} LEFT JOIN industry ON {self.basetable}.industry_id = industry.industry_id WHERE {self.basetable}.symbol = '{self.symbol}'")
         data = cursor.fetchall()
         conn.close()
-        return data[0][0]
+        if len(data) != 0:
+            return data[0][0]
+        return []
     
     def fetch_nasdaq_fin(self):
         symbol = self.symbol
@@ -576,6 +634,24 @@ class Stock:
         except (AttributeError, TypeError) as e:
             return f"Cannot fetch {self.symbol} price in {interval} interval"
         
+    def get_all_news(self):
+        id = self.get_stock_id()
+        conn = sqlite3.connect('stock.db',timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT a.news_id,a.title,a.[datetime],a.link,a.content FROM {self.news_table} AS a INNER JOIN {self.relation_table} AS b ON a.news_id = b.news_id WHERE b.{self.type}_id = {id}")
+        data = cursor.fetchall()
+        conn.close()
+        return data
+    
+    def get_stock_location(self):
+        stock_id = self.get_stock_id()
+        conn = sqlite3.connect('stock.db',timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT {self.location_table}.news_id, location.location_name, location.lat, location.lon FROM {self.location_table} INNER JOIN location ON {self.location_table}.location_id = location.location_id WHERE {self.location_table}.{self.type}_id = {stock_id}")
+        data = cursor.fetchall()
+        conn.close()
+        return data
+        
     # def fetch_new_stock_price(self):
     #     price_hour = self.get_new_stock_data(self.symbol,'30m','60d')
     #     price_day = self.get_new_stock_data(self.symbol,'1d','2y')
@@ -780,7 +856,9 @@ class News:
         cursor.execute(f"SELECT title,content FROM {self.news_table} WHERE news_id = {news_id}")
         data = cursor.fetchall()
         conn.close()
-        return data[0]
+        if len(data) != 0:
+            return data[0]
+        return []
 
     def insert_many_news(self,news_id,stock_id):
         conn = sqlite3.connect('stock.db',timeout=10)#connect to database
