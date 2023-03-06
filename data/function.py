@@ -6,6 +6,9 @@ import requests
 from bs4 import BeautifulSoup
 from googletrans import Translator
 import spacy
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+import time
 
 class Categories:
     def __init__(self,index):
@@ -90,7 +93,7 @@ class Categories:
         """return list of all industry"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT symbol FROM industry")
+        cursor.execute(f"SELECT DISTINCT industry.symbol FROM industry INNER JOIN {self.basetable} ON industry.industry_id = {self.basetable}.industry_id")
         data = cursor.fetchall()
         conn.close()
         return [i[0] for i in data]
@@ -99,7 +102,7 @@ class Categories:
         """return list of all sector symbol"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT symbol FROM sector")
+        cursor.execute(f"SELECT DISTINCT sector.symbol FROM sector INNER JOIN {self.basetable} ON sector.sector_id = {self.basetable}.sector_id")
         data = cursor.fetchall()
         conn.close()
         return [i[0] for i in data]
@@ -285,12 +288,212 @@ class Stock:
         data = cursor.fetchall()
         conn.close()
         return data[0][0]
+    
+    def fetch_nasdaq_fin(self):
+        symbol = self.symbol
+        # replace the "demo" apikey below with your own key from https://www.alphavantage.co/support/#api-key
+        url_earning = 'https://www.alphavantage.co/query?function=EARNINGS&symbol='+symbol+'&apikey=TDHPCWL40AZFBJ82'
+        url_balance_sheet = 'https://www.alphavantage.co/query?function=BALANCE_SHEET&symbol='+symbol+'&apikey=TDHPCWL40AZFBJ82'
+        url_income_statement = 'https://www.alphavantage.co/query?function=INCOME_STATEMENT&symbol='+symbol+'&apikey=TDHPCWL40AZFBJ82'
+
+        r_earning = requests.get(url_earning)
+        r_balance_sheet = requests.get(url_balance_sheet)
+        r_income_statement = requests.get(url_income_statement)
+        
+
+        data_earning = r_earning.json()
+        data_balance_sheet = r_balance_sheet.json()
+        data_income_statement = r_income_statement.json()
+
+        df_earning = pd.DataFrame(data_earning["quarterlyEarnings"])
+        df_earning = df_earning[['fiscalDateEnding','reportedEPS']].drop(index=0).reset_index(drop=True).head(20)
+
+        df_balance = pd.DataFrame(data_balance_sheet["quarterlyReports"])
+        df_balance = df_balance[['fiscalDateEnding','totalAssets','totalLiabilities']]
+
+        df_income_statement = pd.DataFrame(data_income_statement["quarterlyReports"])
+        df_income_statement = df_income_statement[['fiscalDateEnding','grossProfit','totalRevenue','netIncome']]
+
+        df = df_earning.join(df_balance.set_index('fiscalDateEnding'), on='fiscalDateEnding').join(df_income_statement.set_index('fiscalDateEnding'), on='fiscalDateEnding')
+        df.dropna(inplace=True)
+        row_lists = df.apply(lambda row: row.tolist(), axis=1).tolist()
+        return row_lists
+    
+    def fetch_set_fin(self):
+        symbol = self.symbol
+        url = f"https://www.finnomena.com/stock/{symbol}"
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        # Initialize Chrome webdriver with the headless option
+        driver = webdriver.Chrome('./chromedriver', options=chrome_options)
+        driver.get(url)
+
+        time.sleep(2) 
+        html = driver.page_source
+        soup = BeautifulSoup(html, "html.parser")
+
+        driver.close()
+
+        all_divs = soup.find_all('div', {'class' : "content" })
+        n = 0
+        quarter = []
+        total_asset = []
+        total_debt = []
+        shareholder_equity = []
+        paid_up_capital = []
+        total_revenue = []
+        net_profit = []
+        esp = []
+        roa = []
+        roe = []
+        net_profit_margin = []
+        market_capitalization = []
+        p_e = []
+        p_bv = []
+        dividend_yield = []
+
+        buffer = []
+        n_data = 0
+        for i in all_divs:
+            if n == 0:
+                year = i.find_all('div', {'class' : "year" })
+                for j in year:
+                    q = j.text[2:]+j.text[1:2]+j.text[:1]
+                    quarter.append(q)
+                quarter[-1] = quarter[-1][-1:]+quarter[-1][-2:-1]+quarter[-1][:-2]
+                n+=1
+                n_data = len(quarter)
+                continue
+            elif n == 1:
+                each = i.find_all('div', {'class' : "data-each" })
+                for j in each:
+                    if j.text == 'N/A':
+                        data = "null"
+                    elif j.text == '':
+                        data = "null"
+                    elif j.text != '':
+                        data = float(j.text.replace(',',''))
+                    if len(total_asset) < n_data:
+                        total_asset.append(data)
+                    elif len(total_debt) < n_data:
+                        total_debt.append(data)
+                    elif len(shareholder_equity) < n_data:
+                        shareholder_equity.append(data)
+                    elif len(paid_up_capital) < n_data:
+                        paid_up_capital.append(data)
+                    elif len(total_revenue) < n_data:
+                        total_revenue.append(data)
+                    elif len(buffer) < 2*n_data:
+                        buffer.append('1')
+                    elif len(net_profit) < n_data:
+                        net_profit.append(data)
+                    elif len(buffer) < (2+4)*n_data:
+                        buffer.append('1')
+                    elif len(esp) < n_data:
+                        esp.append(data)
+            elif n == 2:
+                each = i.find_all('div', {'class' : "data-each" })
+                for j in each:
+                    if j.text == 'N/A':
+                        data = "null"
+                    elif j.text == '':
+                        data = "null"
+                    elif j.text != '':
+                        data = float(j.text.replace(',',''))
+                    if len(roa) < n_data:
+                        roa.append(data)
+                    elif len(roe) < n_data:
+                        roe.append(data)
+                    elif len(buffer) < (2+4+2)*n_data:
+                        buffer.append('1')
+                    elif len(net_profit_margin) < n_data:
+                        net_profit_margin.append(data)
+            elif n == 3:
+                each = i.find_all('div', {'class' : "data-each" })
+                for j in each:
+                    if j.text == 'N/A':
+                        data = "null"
+                    elif j.text == '':
+                        data = "null"
+                    elif j.text != '':
+                        data = float(j.text.replace(',',''))
+                    if len(buffer) < (2+4+2+1)*n_data:
+                        buffer.append("1")
+                    elif len(market_capitalization) < n_data:
+                        market_capitalization.append(data)
+                    elif len(p_e) < n_data:
+                        p_e.append(data)
+                    elif len(p_bv) < n_data:
+                        p_bv.append(data)
+                    elif len(buffer) < (2+4+2+1+1)*n_data:
+                        buffer.append("1")
+                    elif len(dividend_yield) < n_data:
+                        dividend_yield.append(data)
+            n+=1
+
+        stock_statement = {"quarter":quarter,"total_asset":total_asset,"total_debt":total_debt,"shareholder_equity":shareholder_equity,"paid_up_capital":paid_up_capital,"total_revenue":total_revenue,"net_profit":net_profit,"esp":esp,"roa":roa,"roe":roe,"net_profit_margin":net_profit_margin,"market_capitalization":market_capitalization,"p_e":p_e,"p_bv":p_bv,"dividend_yield":dividend_yield}
+        df = pd.DataFrame(stock_statement)
+        row_lists = df.apply(lambda row: row.tolist(), axis=1)
+
+        return row_lists.to_list()
+
+    def insert_set_fin(self,stock_id,finance):
+        conn = sqlite3.connect('stock.db',timeout=10)#connect to database
+        cursor = conn.cursor()
+        cursor.execute(f"INSERT INTO set_financial_statement VALUES (null,{stock_id},'{finance[0]}',{finance[1]},{finance[2]},{finance[3]},{finance[4]},{finance[5]},{finance[6]},{finance[7]},{finance[8]},{finance[9]},{finance[10]},{finance[11]},{finance[12]},{finance[13]},{finance[14]})")
+        conn.commit()#commit change to db
+        conn.close()#disconnect
+
+    def insert_nasdaq_fin(self,stock_id,finance):
+        conn = sqlite3.connect('stock.db',timeout=10)#connect to database
+        cursor = conn.cursor()
+        cursor.execute(f"INSERT INTO nasdaq_financial_statement VALUES (null,{stock_id},'{finance[0]}',{finance[1]},{finance[2]},{finance[3]},{finance[4]},{finance[5]},{finance[6]})")
+        conn.commit()#commit change to db
+        conn.close()#disconnect
+
+    def get_quarter_fin(self):
+        """return financial statement of the stock"""
+        table = ''
+        if self.basetable == 'stock':
+            table = 'set_financial_statement'
+        elif self.basetable == 'stock_nasdaq':
+            table = 'nasdaq_financial_statement'
+        else:
+            return "Does not contain financial statement"
+        id = self.get_stock_id()
+        conn = sqlite3.connect('stock.db',timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT quarter FROM {table} WHERE stock_id = {id}")
+        data = cursor.fetchall()
+        conn.close()
+        return [i[0] for i in data]
+
+    def fetch_financial(self):
+        stock_id = self.get_stock_id()
+        if self.basetable == 'stock':
+            finance = self.fetch_set_fin()
+            for i in finance:
+                all_quarter = self.get_quarter_fin()
+                if i[0] in all_quarter or '/' in i[0]:
+                    continue 
+                else:
+                    self.insert_set_fin(stock_id,i)
+        elif self.basetable == 'stock_nasdaq':
+            finance = self.fetch_nasdaq_fin()
+            for i in finance:
+                all_quarter = self.get_quarter_fin()
+                if i[0] in all_quarter:
+                    continue 
+                else:
+                    self.insert_nasdaq_fin(stock_id,i)
+        else:
+            return "Does not contain financial statement"
 
     def financial_statement(self):
         """return financial statement of the stock"""
         table = ''
         if self.basetable == 'stock':
-            table = 'new_financial_statement'
+            table = 'set_financial_statement'
         elif self.basetable == 'stock_nasdaq':
             table = 'nasdaq_financial_statement'
         else:
@@ -303,28 +506,35 @@ class Stock:
         conn.close()
         return data
 
-    def get_new_stock_data(self,name,interval,period):   
-        data = yf.download(tickers=name+self.price, interval = interval,period=period)
-        data = data.loc[data["Volume"] != 0 ].drop(["Adj Close"],axis = 1)
-        new_data_open = data['Open'].resample("H").first()
-        new_data_close = data['Close'].resample("H").last()
-        new_data_high = data['High'].resample("H").max()
-        new_data_low = data['Low'].resample("H").min()
-        new_data_volume = data['Volume'].resample("H").sum()
-        new_data = pd.DataFrame({'Open': new_data_open,
-                                        'High': new_data_high,
-                                        'Low': new_data_low,
-                                        'Close': new_data_close,
-                                        'Volume': new_data_volume}).dropna()
-        new_data["Date"] = new_data.index.strftime('%Y-%m-%d %X') # convert pandas timestamp to string 
-        return new_data.values.tolist() #return value in type list
+    # def get_new_stock_data(self,name,interval,period):   
+    #     data = yf.download(tickers=name+self.price, interval = interval,period=period)
+    #     data = data.loc[data["Volume"] != 0 ].drop(["Adj Close"],axis = 1)
+    #     new_data_open = data['Open'].resample("H").first()
+    #     new_data_close = data['Close'].resample("H").last()
+    #     new_data_high = data['High'].resample("H").max()
+    #     new_data_low = data['Low'].resample("H").min()
+    #     new_data_volume = data['Volume'].resample("H").sum()
+    #     new_data = pd.DataFrame({'Open': new_data_open,
+    #                                     'High': new_data_high,
+    #                                     'Low': new_data_low,
+    #                                     'Close': new_data_close,
+    #                                     'Volume': new_data_volume}).dropna()
+    #     new_data["Date"] = new_data.index.strftime('%Y-%m-%d %X') # convert pandas timestamp to string 
+    #     return new_data.values.tolist() #return value in type list
 
     def get_stock_and_crypto_data(self,name,start,interval):
         """return list of data of this stock from yahoo finance"""
-        start = datetime.datetime.strptime(start, '%Y-%m-%d %H:%M:%S')# convert string to datetime obj
         if interval == '1h':
             interval = '30m'
-        data = yf.download(tickers=name, start=start, interval = interval)
+        if start == None:
+            if interval == "30m":
+                data = yf.download(tickers=name, period='60d', interval = interval)
+            else:
+                data = yf.download(tickers=name, period='730d', interval = interval)
+        else:
+            start = datetime.datetime.strptime(start, '%Y-%m-%d %H:%M:%S')# convert string to datetime obj
+            data = yf.download(tickers=name, start=start, interval = interval)
+
         data = data.loc[data["Volume"] != 0 ].drop(["Adj Close"],axis = 1)
         new_data_open = data['Open'].resample("H").first()
         new_data_close = data['Close'].resample("H").last()
@@ -366,21 +576,23 @@ class Stock:
         except (AttributeError, TypeError) as e:
             return f"Cannot fetch {self.symbol} price in {interval} interval"
         
-    def fetch_new_stock_price(self):
-        price_hour = self.get_new_stock_data(self.symbol,'30m','60d')
-        price_day = self.get_new_stock_data(self.symbol,'1d','2y')
-        self.insert_new_stock(self.symbol)
-        self.insert_stock(price_hour,'1h')
-        self.insert_stock(price_day,'1d')
+    # def fetch_new_stock_price(self):
+    #     price_hour = self.get_new_stock_data(self.symbol,'30m','60d')
+    #     price_day = self.get_new_stock_data(self.symbol,'1d','2y')
+    #     self.insert_new_stock(self.symbol)
+    #     self.insert_stock(price_hour,'1h')
+    #     self.insert_stock(price_day,'1d')
         
-    def get_location(self):
-        id = self.get_stock_id()
-        conn = sqlite3.connect('stock.db',timeout=10)
-        cursor = conn.cursor()
-        cursor.execute(f"SELECT location_name,lat,lon FROM location WHERE stock_id = {id}")
-        data = cursor.fetchall()
-        conn.close()
-        return data
+    # def get_location(self):
+    #     stock_id = self.get_stock_id(self.symbol)
+    #     conn = sqlite3.connect('stock.db',timeout=10)
+    #     cursor = conn.cursor()
+    #     cursor.execute(f"SELECT {self.location_table}.news_id, location.location_name, location.lat, location.lon FROM {self.location_table} INNER JOIN location ON {self.location_table}.location_id = location.location_id WHERE {self.location_table}.{self.type}_id = {stock_id}")
+    #     data = cursor.fetchall()
+    #     conn.close()
+    #     return data
+    
+
     
 
 
@@ -392,11 +604,22 @@ class News:
             self.news_table = 'set_news'
             self.relation_table = 'many_set_news'
             self.stock_table = 'stock'
+            self.type = 'stock'
+            self.extend = ''
             self.index = index.upper()
         elif index.upper() == 'NASDAQ':
             self.news_table = 'nasdaq_news'
             self.relation_table = 'many_nasdaq_news'
             self.stock_table = 'stock_nasdaq'
+            self.type = 'stock'
+            self.extend = ''
+            self.index = index.upper()
+        elif index.upper() == 'CRYPTO':
+            self.news_table = 'crypto_news'
+            self.relation_table = 'many_crypto_news'
+            self.stock_table = 'crypto'
+            self.type = 'crypto'
+            self.extend = '-USD'
             self.index = index.upper()
         else:
             raise ValueError('wrong index')
@@ -449,7 +672,7 @@ class News:
 ################################################################
 
     def nasdaq_get_all_tags(self,symbol):
-        latest = f'https://finance.yahoo.com/quote/{symbol.upper()}'
+        latest = f'https://finance.yahoo.com/quote/{symbol.upper()}{self.extend}'
         response = requests.get(latest)
         if response.status_code == 200:
             data = BeautifulSoup(response.text,"html.parser")
@@ -513,7 +736,7 @@ class News:
         """return id of stock"""   
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT stock_id FROM {self.stock_table} WHERE symbol = '{symbol.upper()}'")
+        cursor.execute(f"SELECT {self.type}_id FROM {self.stock_table} WHERE symbol = '{symbol.upper()}'")
         data = cursor.fetchall()
         conn.close()
         if len(data) != 0:
@@ -533,7 +756,7 @@ class News:
     def check_relation(self,stock_id,news_id):
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT news_id FROM {self.relation_table} WHERE stock_id = {stock_id}")
+        cursor.execute(f"SELECT news_id FROM {self.relation_table} WHERE {self.type}_id = {stock_id}")
         data = cursor.fetchall()
         conn.close()
         news = []
@@ -602,8 +825,18 @@ class News:
     def fetch_news(self,symbol):
         if self.index == 'SET':
             self.fetch_set_news(symbol)
-        elif self.index == 'NASDAQ':
+        elif self.index == 'NASDAQ' or self.index == 'CRYPTO':
             self.fetch_nasdaq_news(symbol)
+
+    def get_all_news(self,symbol):
+        id = self.get_stock_id(symbol)
+        conn = sqlite3.connect('stock.db',timeout=10)
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT a.news_id,a.title,a.[datetime],a.link,a.content FROM {self.news_table} AS a INNER JOIN {self.relation_table} AS b ON a.news_id = b.news_id WHERE b.{self.type}_id = {id}")
+        data = cursor.fetchall()
+        conn.close()
+        return data
+        
     
     def detect(self,text):
         translator = Translator()
@@ -641,12 +874,21 @@ class Location:
             self.relation_table = 'many_set_news'
             self.location_table = 'set_location'
             self.stock_table = 'stock'
+            self.type = 'stock'
             self.index = index.upper()
         elif index.upper() == 'NASDAQ':
             self.news_table = 'nasdaq_news'
             self.relation_table = 'many_nasdaq_news'
             self.location_table = 'nasdaq_location'
             self.stock_table = 'stock_nasdaq'
+            self.type = 'stock'
+            self.index = index.upper()
+        elif index.upper() == 'CRYPTO':
+            self.news_table = 'crypto_news'
+            self.relation_table = 'many_crypto_news'
+            self.location_table = 'crypto_location'
+            self.stock_table = 'crypto'
+            self.type = 'crypto'
             self.index = index.upper()
         else:
             raise ValueError('wrong index')
@@ -655,7 +897,7 @@ class Location:
         """return id of stock"""   
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT stock_id FROM {self.stock_table} WHERE symbol = '{symbol.upper()}'")
+        cursor.execute(f"SELECT {self.type}_id FROM {self.stock_table} WHERE symbol = '{symbol.upper()}'")
         data = cursor.fetchall()
         conn.close()
         if len(data) != 0:
@@ -696,7 +938,7 @@ class Location:
         stock_id = self.get_stock_id(symbol)
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT {self.location_table}.news_id, location.location_name, location.lat, location.lon FROM {self.location_table} INNER JOIN location ON {self.location_table}.location_id = location.location_id WHERE {self.location_table}.stock_id = {stock_id}")
+        cursor.execute(f"SELECT {self.location_table}.news_id, location.location_name, location.lat, location.lon FROM {self.location_table} INNER JOIN location ON {self.location_table}.location_id = location.location_id WHERE {self.location_table}.{self.type}_id = {stock_id}")
         data = cursor.fetchall()
         conn.close()
         return data
@@ -704,7 +946,7 @@ class Location:
     def check_locate_relation(self,location_id,news_id,stock_id):
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT location_id FROM {self.location_table} WHERE news_id = {news_id} and stock_id = {stock_id}")
+        cursor.execute(f"SELECT location_id FROM {self.location_table} WHERE news_id = {news_id} and {self.type}_id = {stock_id}")
         data = cursor.fetchall()
         conn.close()
         location = []
@@ -730,7 +972,7 @@ class Location:
         stock_id = self.get_stock_id(symbol)
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT DISTINCT news_id FROM {self.relation_table} WHERE stock_id = {stock_id}")
+        cursor.execute(f"SELECT DISTINCT news_id FROM {self.relation_table} WHERE {self.type}_id = {stock_id}")
         data = cursor.fetchall()
         conn.close()
         return [i[0] for i in data]
@@ -739,7 +981,7 @@ class Location:
         stock_id = self.get_stock_id(symbol)
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT DISTINCT news_id FROM {self.location_table} WHERE stock_id = {stock_id}")
+        cursor.execute(f"SELECT DISTINCT news_id FROM {self.location_table} WHERE {self.type}_id = {stock_id}")
         data = cursor.fetchall()
         conn.close()
         return [i[0] for i in data]
