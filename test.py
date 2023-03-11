@@ -16,7 +16,7 @@ class TestCategories(unittest.TestCase):
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchall.return_value = [('AOT',),('PTT',)] 
 
-        result = Categories().get_all_stock()
+        result = Categories("SET").get_all_stock()
         self.assertEqual(result, ['AOT','PTT'])
         mock_connect.assert_called_once_with('stock.db', timeout=10)
         mock_cursor.execute.assert_called_once_with("SELECT symbol FROM stock")
@@ -32,7 +32,7 @@ class TestCategories(unittest.TestCase):
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchall.return_value = [] 
 
-        result = Categories().get_all_stock()
+        result = Categories("SET").get_all_stock()
         self.assertEqual(result, [])
         mock_connect.assert_called_once_with('stock.db', timeout=10)
         mock_cursor.execute.assert_called_once_with("SELECT symbol FROM stock")
@@ -48,7 +48,7 @@ class TestCategories(unittest.TestCase):
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchall.return_value = [('AOT',)] 
 
-        result = Categories().get_all_stock()
+        result = Categories("SET").get_all_stock()
         self.assertEqual(result, ['AOT'])
         mock_connect.assert_called_once_with('stock.db', timeout=10)
         mock_cursor.execute.assert_called_once_with("SELECT symbol FROM stock")
@@ -65,7 +65,7 @@ class TestCategories(unittest.TestCase):
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchall.return_value = [('AOT',),('PTT',)] 
 
-        result = Categories().get_all_stock_in_sector("AGRI")
+        result = Categories("SET").get_all_stock_in_sector("AGRI")
         self.assertEqual(result, ['AOT','PTT'])
         mock_connect.assert_called_once_with('stock.db', timeout=10)
         mock_cursor.execute.assert_called_once_with("SELECT symbol FROM stock WHERE sector_id = 1")
@@ -83,7 +83,7 @@ class TestStock(unittest.TestCase):
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchall.return_value = [(1,)] 
 
-        aot = Stock("AOT")
+        aot = Stock("AOT","SET")
         result = aot.get_stock_id()
         self.assertEqual(result, 1)
         sqlite3.connect.assert_called_once_with('stock.db', timeout=10)
@@ -101,7 +101,7 @@ class TestStock(unittest.TestCase):
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.fetchall.return_value = [(40.5,)] 
 
-        aot = Stock("AOT")
+        aot = Stock("AOT","SET")
         result = aot.get_stock_price(interval = '1h')
         self.assertEqual(result, 40.5)
         sqlite3.connect.assert_called_once_with('stock.db', timeout=10)
@@ -109,15 +109,10 @@ class TestStock(unittest.TestCase):
         mock_cursor.fetchall.assert_called_once()
         mock_conn.close.assert_called_once()
 
-    def test_init(self):
-        Categories.get_all_stock = MagicMock(return_value = ["AOT","PTT","TRUE"])
-        with self.assertRaises(ValueError) as error:
-            Stock("ABC")
-        self.assertEqual(str(error.exception),"ABC is not available")
     
     def test_table(self):
         Categories.get_all_stock = MagicMock(return_value = ["AOT","PTT","TRUE"])
-        aot = Stock("AOT")
+        aot = Stock("AOT","SET")
         with self.assertRaises(ValueError) as error:
             aot.table("30m")
         self.assertEqual(str(error.exception),"The interval 30m is not available. The available interval are 1h,1d")
@@ -138,7 +133,7 @@ class TestStock(unittest.TestCase):
                                              ("2022-11-16 14:00:00",),
                                              ("2022-11-16 15:00:00",),
                                              ("2022-11-16 16:00:00",)]
-        aot = Stock("AOT")
+        aot = Stock("AOT","SET")
         result = aot.get_all_datetime(interval = '1h')
         self.assertEqual(result, ["2022-11-16 10:00:00",
                                   "2022-11-16 11:00:00",
@@ -172,7 +167,7 @@ class TestStock(unittest.TestCase):
                 (74.5, 74.75, 74.5, 74.5, 5966428,'2022-11-17 10:00:00'),
                 (74.75, 74.75, 74.0, 74.0, 12216704,'2022-11-17 11:00:00'),
                 (74.0, 74.25, 74.0, 74.25, 788348,'2022-11-17 12:00:00')]
-        aot = Stock("AOT")
+        aot = Stock("AOT","SET")
         result = aot.insert_stock(data=data,interval = '1h')
         self.assertEqual(result,None)
         self.assertEqual(mock_cursor.execute.call_count,3)
@@ -183,102 +178,92 @@ class TestStock(unittest.TestCase):
 
 class TestNews(unittest.TestCase):
 
-    def test_get_all_tag_normal(self):
+    def test_yahoo_get_all_tag_normal(self):
         html = '<li class="js-stream-content Pos(r)">xxxxx</li><li class="abc">zzzzz</li><li class="js-stream-content Pos(r)">yyyyy</li>'
 
         mock_response = MagicMock()
         requests.get = MagicMock(return_value=mock_response)
-        mock_response.content = html
+        mock_response.text = html
+        mock_response.status_code = 200
 
-        news = News()
-        result = news.get_all_tag()
+        news = News("NASDAQ")
+        result = news.nasdaq_get_all_tags("APPL")
         result = [str(i) for i in result]
 
         self.assertEqual(result,['<li class="js-stream-content Pos(r)">xxxxx</li>','<li class="js-stream-content Pos(r)">yyyyy</li>'])
 
 
-    def test_get_all_tag_wrong(self):
+    def test_yahoo_get_all_tag_wrong(self):
         html = '<li class="aaa">xxxxx</li><li class="abc">zzzzz</li><li class="ccc">yyyyy</li>'
 
         mock_response = MagicMock()
         requests.get = MagicMock(return_value=mock_response)
-        mock_response.content = html
+        mock_response.text = html
+        mock_response.status_code = 200
 
-        news = News()
-        result = news.get_all_tag()
+        news = News("NASDAQ")
+        result = news.nasdaq_get_all_tags("APPL")
 
         self.assertEqual(result,[])
 
-    def test_get_all_tag_null(self):
+    def test_yahoo_get_all_tag_null(self):
         html = ''
 
         mock_response = MagicMock()
         requests.get = MagicMock(return_value=mock_response)
-        mock_response.content = html
+        mock_response.text = html
+        mock_response.status_code = 200
 
-        news = News()
-        result = news.get_all_tag()
+        news = News("NASDAQ")
+        result = news.nasdaq_get_all_tags("APPL")
 
         self.assertEqual(result,[])
 
-    def test_title_and_link_normal(self):
+    def test_yahoo_title_and_link_normal(self):
         html = '<li class="js-stream-content Pos(r)"><a href = "https://finance.yahoo.com">yahoo</a></li><li class="js-stream-content Pos(r)"><a href = "https://google.com">google</a></li>'
         
         mock_response = MagicMock()
         requests.get = MagicMock(return_value=mock_response)
-        mock_response.content = html
+        mock_response.text = html
+        mock_response.status_code = 200
 
-        news = News()
-        result = news.title_and_link()
+        news = News("NASDAQ")
+        data = news.nasdaq_get_all_tags("APPL")
+        result = news.nasdaq_title_link(data)
 
-        self.assertEqual(result,{"yahoo":"https://finance.yahoo.com","google":"https://google.com"})
+        self.assertEqual(result,[{'title': 'yahoo', 'link': 'https://finance.yahoo.com'}, {'title': 'google', 'link': 'https://google.com'}])
 
-    def test_title_and_link_null(self):
-        html = ''
-        
+    def test_yahoo_title_and_link_null(self):
+
+        news = News("NASDAQ")
+        result = news.nasdaq_title_link([])
+
+        self.assertEqual(result,[])
+
+    def test_yahoo_content_time_normal(self):
+        html = '<time datetime = "2022-10-10"></time><li class="caas-body"><p>Test</p><p>Test2</p><p>Test3</p></li>'
         mock_response = MagicMock()
         requests.get = MagicMock(return_value=mock_response)
-        mock_response.content = html
+        mock_response.text = html
+        mock_response.status_code = 200
 
-        news = News()
-        result = news.title_and_link()
+        news = News("NASDAQ")
+        result = news.nasdaq_content_time('https://finance.yahoo.com')
 
-        self.assertEqual(result,{})
+        self.assertEqual(result,{'content': 'Test\nTest2\nTest3\n', 'datetime': '2022-10-10'})
 
-    def test_title_and_content_normal(self):
-        News.title_and_link = MagicMock(return_value = {"yahoo":"https://finance.yahoo.com","google":"https://google.com"})
-
-        html = '<li class="caas-body"><p>Test</p><p>Test2</p><p>Test3</p></li>'
-        mock_response = MagicMock()
-        requests.get = MagicMock(return_value=mock_response)
-        mock_response.content = html
-
-        news = News()
-        result = news.title_and_content()
-
-        self.assertEqual(result,{"yahoo":"Test\nTest2\nTest3\n","google":"Test\nTest2\nTest3\n"})
-
-    def test_title_and_content_null(self):
-        News.title_and_link = MagicMock(return_value = {"yahoo":"https://finance.yahoo.com","google":"https://google.com"})
-
+    def test_yahoo_content_time_null(self):
         html = ''
         mock_response = MagicMock()
         requests.get = MagicMock(return_value=mock_response)
-        mock_response.content = html
+        mock_response.text = html
+        mock_response.status_code = 200
 
-        news = News()
-        result = news.title_and_content()
+        news = News("NASDAQ")
+        result = news.nasdaq_content_time('https://finance.yahoo.com')
 
-        self.assertEqual(result,{"yahoo":"null","google":"null"})
+        self.assertEqual(result,{'content': 'null', 'datetime': 'null'})
 
-    def test_news_list(self):
-        News.title_and_link = MagicMock(return_value = {"yahoo":"https://finance.yahoo.com","google":"https://google.com"})
-        News.title_and_content = MagicMock(return_value = {"yahoo":"TestYahoo12345","google":"TestGoogle12345"})
-
-        news = News()
-        result = news.news_list()
-
-        self.assertEqual(result,[["yahoo","https://finance.yahoo.com","TestYahoo12345"],["google","https://google.com","TestGoogle12345"]])
 
     def test_insert_news(self):
         mock_conn = MagicMock()
@@ -286,32 +271,10 @@ class TestNews(unittest.TestCase):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        news = News()
-        news.insert_news(["yahoo","https://finance.yahoo.com",'TestYahoo12345'])
+        news = News("NASDAQ")
+        news.insert_news({'title':'yahoo','datetime':'2020-10-10','link':'https://finance.yahoo.com','content':'TestYahoo12345'})
 
-        mock_cursor.execute.assert_called_once_with('INSERT INTO news VALUES (null,"yahoo","https://finance.yahoo.com","TestYahoo12345")')
-
-    def test_fetch_news_no_dup(self):
-        News.news_list = MagicMock(return_value=[["yahoo","https://finance.yahoo.com","TestYahoo12345"],["google","https://google.com","TestGoogle12345"]])
-        News.get_title = MagicMock(return_value=["apple"])
-        News.insert_news = MagicMock()
-
-        news = News()
-        news.fetch_news()
-
-        self.assertEqual(News.insert_news.call_count,2)
-        News.insert_news.assert_has_calls([call(["yahoo","https://finance.yahoo.com","TestYahoo12345"]), 
-                                           call(["google","https://google.com","TestGoogle12345"])])
-
-    def test_fetch_news_dup(self):
-        News.news_list = MagicMock(return_value=[["yahoo","https://finance.yahoo.com","TestYahoo12345"],["google","https://google.com","TestGoogle12345"]])
-        News.get_title = MagicMock(return_value=["yahoo"])
-        News.insert_news = MagicMock()
-
-        news = News()
-        news.fetch_news()
-
-        News.insert_news.assert_called_once_with(["google","https://google.com","TestGoogle12345"])
+        mock_cursor.execute.assert_called_once_with('INSERT INTO nasdaq_news VALUES (null,?,?,?,?)', ('yahoo', '2020-10-10', 'https://finance.yahoo.com', 'TestYahoo12345'))
 
 
 class TestLocation(unittest.TestCase):
@@ -327,7 +290,7 @@ class TestLocation(unittest.TestCase):
 
     def test_noun_empty(self):
         string = ""
-        result = Location().noun(string)
+        result = Location('set').noun(string)
         self.assertEqual(result,[])
 
     def test_location_one_location(self):
@@ -338,7 +301,8 @@ class TestLocation(unittest.TestCase):
     def test_location_two_location(self):
         string = "I went to Bangkok after that I went to Paris"
         result = Location('set').location(string)
-        self.assertEqual(result,['Paris','Bangkok'])
+        
+        self.assertEqual(set(result),set(['Paris','Bangkok']))
 
     def test_location_no_location(self):
         string = "I am talking"

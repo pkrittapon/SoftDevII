@@ -1,0 +1,157 @@
+/* Primary and secondary colors */
+QMainWindow {
+    background-color: #1f1f1f ; /* secondary color */
+}
+
+QPushButton {
+    background-color: #3f3f3f;
+    color: #ffffff;
+    border: none;
+    border-radius: 10px
+}
+
+
+QPushButton:hover {
+    background-color: #5f5f5f;
+}
+
+QPushButton:pressed {
+    background-color: #e8e8e8;
+    color: #1f1f1f;
+}
+
+QPushButton:checked {  
+    background-color: #1f1f1f;
+}
+
+QLabel {
+    color: #f2f2f2 ; /* dark gray */
+}
+
+QComboBox {
+    color: #f2f2f2;
+    background-color: #2f2f2f;
+    border: 1px solid #404040;
+    selection-background-color: #dedede;
+    selection-color: #1f1f1f;
+}
+QComboBox:hover {
+    background-color: #5f5f5f;
+}
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    background-color: #5f5f5f;
+}
+/* type combobox */
+/* QComboBox QAbstractItemView QLineEdit {
+  border: 1px solid gray;
+  padding: 2px;
+} */
+
+QComboBox QAbstractItemView {
+    color: #f2f2f2;
+    background-color: #474747;
+    selection-background-color: #404040;
+}
+
+QComboBox QAbstractItemView::drop-down:focus {
+  selection-background-color: #dedede;
+selection-color: #1f1f1f;
+}
+
+QCheckBox {
+    background-color: #1f1f1f;
+    color: #f2f2f2;
+    border: none;
+}
+
+QCheckBox::indicator {
+    background: #1f1f1f;
+    background-color: transparent;
+    color: #1f1f1f;
+    border: 1px solid #5A5A5A;
+}
+
+QCheckBox::indicator:checked {
+    background: transparent;
+    background-color: #f2f2f2;
+    color: transparent;
+    border: 1px solid #5A5A5A;
+}
+
+/* Set the background color of the side bar to a different color */
+QWidget#widget {
+    background-color: #2f2f2f; /* dark gray */
+}
+
+QTableWidget{
+    background-color: #1f1f1f ; /* secondary color */
+    color: #f2f2f2;
+    gridline-color: #ababab;
+}
+QHeaderView::section {
+    background-color: #1f1f1f;
+    color: #f2f2f2;
+    border: 1px solid #ababab;
+}
+
+QTableWidget QTableCornerButton::section {
+    background-color: #1f1f1f;
+    border: 1px solid #ababab;
+}
+
+QTableWidget::item::selected {
+    background-color: #1f1f1f ; /* secondary color */
+    color: #f2f2f2;
+}
+
+QListView{
+    background-color: #2f2f2f;
+    color: #f2f2f2;
+    border: #515151;
+}
+QListView:item{
+    background-color: #2f2f2f;
+    color: #f2f2f2;
+    border: #515151;
+}
+QListView::item::hover{
+    background-color: #3f3f3f;
+    color: #f2f2f2;
+}
+
+QTextBrowser{
+    background-color: #1f1f1f;
+    color: #f2f2f2;
+    border: #515151;
+}
+
+QDoubleSpinBox{
+    color: #f2f2f2;
+    background-color: #3f3f3f;
+    border: 1px solid #404040;
+    selection-background-color: #dedede;
+    selection-color: #1f1f1f;
+}
+
+QTableView  {
+    background-color: #1f1f1f ; /* secondary color */
+    color: #f2f2f2;
+    gridline-color: #ababab;
+}
+QHeaderView::section {
+    background-color: #1f1f1f;
+    color: #f2f2f2;
+    border: 1px solid #ababab;
+}
+
+QTableWidget QTableCornerButton::section {
+    background-color: #1f1f1f;
+    border: 1px solid #ababab;
+}
+
+QTableWidget::item::selected {
+    background-color: #1f1f1f ; /* secondary color */
+    color: #f2f2f2;
+}

@@ -1,0 +1,186 @@
+Table index{
+  index_id int [primary key]
+  symbol text
+}
+Table industry{
+  industry_id int [primary key]
+  symbol text
+}
+Table sector{
+  sector_id int [primary key]
+  symbol text
+  industry_id int [ref: > industry.industry_id]
+}
+Table location{
+  location_id int [primary key]
+  location_name text
+  lat real
+  lon real
+}
+
+
+Table crypto{
+  crypto_id int [primary key]
+  symbol text
+  name text
+}
+Table crypto_price_day{
+  price_id int [primary key]
+  crypto_id int [ref: > crypto.crypto_id]
+  datetime text
+  open real
+  high real
+  low real
+  close real
+  volume int
+}
+Table crypto_price_hour{
+  price_id int [primary key]
+  crypto_id int [ref: > crypto.crypto_id]
+  datetime text
+  open real
+  high real
+  low real
+  close real
+  volume int
+}
+Table crypto_news{
+  news_id int [primary key]
+  title text
+  datetime text
+  link text
+  content text
+}
+Table many_crypto_news{
+  news_id int [ref: > crypto_news.news_id]
+  crypto_id int [ref: > crypto.crypto_id]
+}
+Table crypto_location{
+  news_id int [ref: > crypto_news.news_id]
+  crypto_id int [ref: > crypto.crypto_id]
+  location_id int [ref: > location.location_id]
+}
+
+
+
+Table nasdaq{
+  stock_id int [primary key]
+  symbol text
+  name text
+  index_id int [ref: > index.index_id]
+  industry_id int [ref: > industry.industry_id]
+  sector_id int [ref: > sector.sector_id]
+}
+Table nasdaq_financial_statement{
+  financial_id int [primary key]
+  stock_id int [ref: > nasdaq.stock_id]
+  quarter text
+  EPS real
+  totalAssets real
+  totalLiabilities real
+  grossProfit real
+  totalRevenue real
+  netIncome real
+}
+Table nasdaq_price_day{
+  price_id int [primary key]
+  stock_id int [ref: > nasdaq.stock_id]
+  datetime text
+  open real
+  high real
+  low real
+  close real
+  volume int
+}
+Table nasdaq_price_hour{
+  price_id int [primary key]
+  stock_id int [ref: > nasdaq.stock_id]
+  datetime text
+  open real
+  high real
+  low real
+  close real
+  volume int
+}
+Table nasdaq_news{
+  news_id int [primary key]
+  title text
+  datetime text
+  link text
+  content text
+}
+Table many_nasdaq_news{
+  news_id int [ref: > nasdaq_news.news_id]
+  stock_id int [ref: > nasdaq.stock_id]
+}
+Table nasdaq_location{
+  news_id int [ref: > nasdaq_news.news_id]
+  stock_id int [ref: > nasdaq.stock_id]
+  location_id int [ref: > location.location_id]
+}
+
+
+Table set{
+  stock_id int [primary key]
+  symbol text
+  name text
+  index_id int [ref: > index.index_id]
+  industry_id int [ref: > industry.industry_id]
+  sector_id int [ref: > sector.sector_id]
+}
+Table set_financial_statement{
+  financial_id int [primary key]
+  stock_id int [ref: > set.stock_id]
+  quarter text
+  total_assets real
+  liabilities real
+  equity real
+  paid_up_capital real
+  net_profit real
+  revenue real
+  EPS real
+  ROA real
+  ROE real
+  net_profit_margin real
+  market_cap real
+  "P/E" real
+  "P/BV" real
+  dividend_yield real
+
+}
+Table set_price_day{
+  price_id int [primary key]
+  stock_id int [ref: > set.stock_id]
+  datetime text
+  open real
+  high real
+  low real
+  close real
+  volume int
+}
+Table set_price_hour{
+  price_id int [primary key]
+  stock_id int [ref: > set.stock_id]
+  datetime text
+  open real
+  high real
+  low real
+  close real
+  volume int
+}
+Table set_news{
+  news_id int [primary key]
+  title text
+  datetime text
+  link text
+  content text
+}
+Table many_set_news{
+  news_id int [ref: > set_news.news_id]
+  stock_id int [ref: > set.stock_id]
+}
+Table set_location{
+  news_id int [ref: > set_news.news_id]
+  stock_id int [ref: > set.stock_id]
+  location_id int [ref: > location.location_id]
+}
