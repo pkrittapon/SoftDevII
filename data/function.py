@@ -13,6 +13,7 @@ import time
 class Categories:
     def __init__(self,index):
         index = index.upper()
+        self.index = index
         if index == 'SET':
             self.toptable = 'set100'
             self.basetable = 'stock'
@@ -26,25 +27,20 @@ class Categories:
             self.basetable = 'crypto'
             self.type = 'crypto'
 
-    def get_index_id(self,symbol):
-        """return index id"""
-        symbol = symbol.upper()
-        if not symbol in self.get_all_index():
-            raise ValueError(f"{symbol} is not in index")        
+    def get_index_id(self):#already been test on TestGetIndexID
+        """return index id"""    
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT index_id FROM [index] WHERE symbol = '{symbol}'")
+        cursor.execute(f"SELECT index_id FROM [index] WHERE symbol = '{self.index}'")
         data = cursor.fetchall()
         conn.close()
         if len(data) != 0:
             return data[0][0]
-        return []
+        return 'null'
 
-    def get_industry_id(self,symbol):
+    def get_industry_id(self,symbol):#already been test on TestGetIndustryID
         """return industry id"""
-        symbol = symbol.upper()
-        if not symbol in self.get_all_industry():
-            raise ValueError(f"{symbol} is not in industry")       
+        symbol = symbol.upper()       
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
         cursor.execute(f"SELECT industry_id FROM industry WHERE symbol = '{symbol}'")
@@ -52,13 +48,11 @@ class Categories:
         conn.close()
         if len(data) != 0:
             return data[0][0]
-        return []
+        return 'null'
     
-    def get_sector_id(self,symbol):
+    def get_sector_id(self,symbol):#already been test on TestGetSectorID
         """return sector id""" 
-        symbol = symbol.upper()
-        if not symbol in self.get_all_sector():
-            raise ValueError(f"{symbol} is not in sector")          
+        symbol = symbol.upper()        
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
         cursor.execute(f"SELECT sector_id FROM sector WHERE symbol = '{symbol}'")
@@ -66,21 +60,25 @@ class Categories:
         conn.close()
         if len(data) != 0:
             return data[0][0]
-        return []
+        return 'null'
 
-    def insert_stock(self,stock,index,industry,sector):
+    def insert_stock(self,stock,**kwargs):#already been test on TestInsertStock
         """insert new stock to database"""
-        index_id = self.get_index_id(index)
-        industry_id = self.get_industry_id(industry)
-        sector_id = self.get_sector_id(sector)
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
-        cursor.execute(f"INSERT INTO {self.basetable} (symbol,index_id,industry_id,sector_id) VALUES ('{stock.upper()}',{index_id},{industry_id},{sector_id})")
+        if self.type == 'stock':
+            industry = kwargs.get('industry','null')
+            sector = kwargs.get('sector','null')
+            index_id = self.get_index_id()
+            industry_id = self.get_industry_id(industry)
+            sector_id = self.get_sector_id(sector)
+            cursor.execute(f"INSERT INTO {self.basetable} (symbol,index_id,industry_id,sector_id) VALUES ('{stock.upper()}',{index_id},{industry_id},{sector_id})")
+        else:
+            cursor.execute(f"INSERT INTO {self.basetable} (symbol) VALUES ('{stock.upper()}')")
         conn.commit()
         conn.close()
-        return f"{stock} has been added"
 
-    def get_all_stock(self):
+    def get_all_stock(self):#already been test on TestGetAllStock
         """return list of symbol of stock"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -89,7 +87,7 @@ class Categories:
         conn.close()
         return [i[0] for i in data]
     
-    def get_top_stock(self):
+    def get_top_stock(self):#already been test on TestGetTopStock
         """return list of symbol of stock"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -98,7 +96,7 @@ class Categories:
         conn.close()
         return [i[0] for i in data]
 
-    def get_all_index(self):
+    def get_all_index(self):#already been test on TestGetAllIndex
         """return list of all industry"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -107,7 +105,7 @@ class Categories:
         conn.close()
         return [i[0] for i in data]
 
-    def get_all_industry(self):
+    def get_all_industry(self):#already been test on TestGetAllIndustry
         """return list of all industry"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -116,7 +114,7 @@ class Categories:
         conn.close()
         return [i[0] for i in data]
 
-    def get_all_sector(self):
+    def get_all_sector(self):#already been test on TestGetAllSector
         """return list of all sector symbol"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -125,7 +123,7 @@ class Categories:
         conn.close()
         return [i[0] for i in data]
 
-    def get_all_sector_in_industrial(self,symbol):
+    def get_all_sector_in_industrial(self,symbol):#already been test on TestGetAllSectorInIndustry
         """return list of all sector symbol that is in the input industry symbol"""
         id = self.get_industry_id(symbol)
         conn = sqlite3.connect('stock.db',timeout=10)
@@ -135,7 +133,7 @@ class Categories:
         conn.close()
         return [i[0] for i in data]
 
-    def get_all_stock_in_industrial(self,symbol):
+    def get_all_stock_in_industrial(self,symbol):#already been test on TestGetAllStockInIndustry
         """return list of all stock symbol that is in the input industry symbol"""
         id = self.get_industry_id(symbol)
         conn = sqlite3.connect('stock.db',timeout=10)
@@ -145,7 +143,7 @@ class Categories:
         conn.close()
         return [i[0] for i in data]
 
-    def get_all_stock_in_sector(self,symbol):
+    def get_all_stock_in_sector(self,symbol):#already been test on TestGetAllStockInSector
         """return list of all stock symbol that is in the input sector symbol"""
         id = self.get_sector_id(symbol)
         conn = sqlite3.connect('stock.db',timeout=10)
@@ -186,7 +184,7 @@ class Stock:
             self.location_table = 'crypto_location'
         self.symbol = symbol
 
-    def get_stock_id(self):
+    def get_stock_id(self):#already been test on TestGetStockID
         """return the id of this stock if its has otherwise return empty list"""       
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -197,7 +195,7 @@ class Stock:
             return data[0][0]
         return []
     
-    def get_stock_name(self):
+    def get_stock_name(self):#already been test on TestGetStockName
         """return the full name of the stock if its has otherwise return empty list"""
         id = self.get_stock_id()
         conn = sqlite3.connect('stock.db',timeout=10)
@@ -209,16 +207,15 @@ class Stock:
             return data[0][0]
         return []
     
-    def delete(self):
-        "delete this stock and its entire related data from database"
+    def delete(self):#already been test on TestDelete
+        "delete this stock from database"
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
         cursor.execute(f"DELETE FROM {self.basetable} WHERE symbol = '{self.symbol}'")
         conn.commit()
         conn.close()
-        return f"{self.symbol} has been deleted"
 
-    def table(self,interval):
+    def table(self,interval):#already been test on TestTable
         "return price table that is available on database"
         available_interval = ['1h','1d']
         if not interval in available_interval:
@@ -229,7 +226,7 @@ class Stock:
             elif interval == '1d':
                 return f'{self.basetable}_price_day'
 
-    def get_stock_price(self,**kwargs):
+    def get_stock_price(self,**kwargs):#already been test on TestGetStockPrice
         """return the latest price of stock"""
         interval = kwargs.get('interval','1h')
         id = self.get_stock_id()
@@ -243,7 +240,7 @@ class Stock:
             return data[0][0]
         return []
     
-    def get_percent_change(self,**kwargs):
+    def get_percent_change(self,**kwargs):#already been test on TestGetPercentChange
         """return the percent change of the stock price"""
         interval = kwargs.get('interval','1h')
         id = self.get_stock_id()
@@ -254,12 +251,12 @@ class Stock:
         data = cursor.fetchall()
         conn.close()
         data = [i[0] for i in data]
-        if len(data) != 0:
+        if len(data) == 2:
             percent = ((data[0]-data[1])/data[1])*100
             return percent
         return []
 
-    def latest_update_time(self, **kwargs):
+    def latest_update_time(self, **kwargs):#already been test on TestGetLatestAndOldestUpdateTime
         """return the latest update time of stock"""
         interval = kwargs.get('interval','1h')
         id = self.get_stock_id()
@@ -273,7 +270,7 @@ class Stock:
             return data[0][0]
         return []
 
-    def oldest_update_time(self,**kwargs):
+    def oldest_update_time(self,**kwargs):#already been test on TestGetLatestAndOldestUpdateTime
         """return the oldest update time of stock"""
         interval = kwargs.get('interval','1h')
         id = self.get_stock_id()
@@ -287,7 +284,7 @@ class Stock:
             return data[0][0]
         return []
 
-    def get_all_datetime(self,**kwargs):
+    def get_all_datetime(self,**kwargs):#already been test on TestGetAllDatetime
         """return all datetime that this stock has price"""
         interval = kwargs.get('interval','1h')
         id = self.get_stock_id()
@@ -299,7 +296,7 @@ class Stock:
         conn.close()
         return [i[0] for i in data]
 
-    def get_all_stock_price(self,**kwargs):
+    def get_all_stock_price(self,**kwargs):#already been test on TestGetAllStockPrice
         """return all stock price between the interval"""
         interval = kwargs.get('interval','1h')
         start = kwargs.get('start',self.oldest_update_time(interval=interval))
@@ -366,6 +363,7 @@ class Stock:
 
         df = df_earning.join(df_balance.set_index('fiscalDateEnding'), on='fiscalDateEnding').join(df_income_statement.set_index('fiscalDateEnding'), on='fiscalDateEnding')
         df.dropna(inplace=True)
+        df.replace('None','null',inplace=True)
         row_lists = df.apply(lambda row: row.tolist(), axis=1).tolist()
         return row_lists
     
@@ -560,22 +558,6 @@ class Stock:
         conn.close()
         return data
 
-    # def get_new_stock_data(self,name,interval,period):   
-    #     data = yf.download(tickers=name+self.price, interval = interval,period=period)
-    #     data = data.loc[data["Volume"] != 0 ].drop(["Adj Close"],axis = 1)
-    #     new_data_open = data['Open'].resample("H").first()
-    #     new_data_close = data['Close'].resample("H").last()
-    #     new_data_high = data['High'].resample("H").max()
-    #     new_data_low = data['Low'].resample("H").min()
-    #     new_data_volume = data['Volume'].resample("H").sum()
-    #     new_data = pd.DataFrame({'Open': new_data_open,
-    #                                     'High': new_data_high,
-    #                                     'Low': new_data_low,
-    #                                     'Close': new_data_close,
-    #                                     'Volume': new_data_volume}).dropna()
-    #     new_data["Date"] = new_data.index.strftime('%Y-%m-%d %X') # convert pandas timestamp to string 
-    #     return new_data.values.tolist() #return value in type list
-
     def get_stock_and_crypto_data(self,name,start,interval):
         """return raw price data of this stock from yahoo finance"""
         if interval == '1h':
@@ -603,7 +585,7 @@ class Stock:
         new_data["Date"] = new_data.index.strftime('%Y-%m-%d %X') # convert pandas timestamp to string 
         return new_data.values.tolist() #return value in type list
 
-    def insert_stock(self,data,interval):
+    def insert_stock(self,data,interval):#already been test on TestStock.test_insert_stock
         """insert price data to specific price table in database"""
         id = self.get_stock_id()
         date = self.get_all_datetime(interval = interval)
@@ -677,30 +659,6 @@ class Stock:
         conn.close()
         return data
     
-    #SELECT {self.location_table}.news_id, location.location_name, location.lat, location.lon FROM {self.location_table} INNER JOIN location ON {self.location_table}.location_id = location.location_id WHERE {self.location_table}.{self.type}_id = {stock_id}
-
-    # SELECT  c.[datetime],a.location_name, a.lat, a.lon FROM location AS a 
-    # INNER JOIN set_location AS b ON a.location_id = b.location_id
-    # INNER JOIN set_news AS c ON b.news_id = c.news_id
-    # WHERE b.stock_id = 482 AND c.[datetime] >=  "2023-02-14 00:00:00" ORDER BY c.[datetime] DESC
-        
-    # def fetch_new_stock_price(self):
-    #     price_hour = self.get_new_stock_data(self.symbol,'30m','60d')
-    #     price_day = self.get_new_stock_data(self.symbol,'1d','2y')
-    #     self.insert_new_stock(self.symbol)
-    #     self.insert_stock(price_hour,'1h')
-    #     self.insert_stock(price_day,'1d')
-        
-    # def get_location(self):
-    #     stock_id = self.get_stock_id(self.symbol)
-    #     conn = sqlite3.connect('stock.db',timeout=10)
-    #     cursor = conn.cursor()
-    #     cursor.execute(f"SELECT {self.location_table}.news_id, location.location_name, location.lat, location.lon FROM {self.location_table} INNER JOIN location ON {self.location_table}.location_id = location.location_id WHERE {self.location_table}.{self.type}_id = {stock_id}")
-    #     data = cursor.fetchall()
-    #     conn.close()
-    #     return data
-    
-
 
 class News:
 
