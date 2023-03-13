@@ -1180,7 +1180,7 @@ class Location:
             return {'lat':data[0]['lat'],'lon':data[0]['lon']}
         return None
     
-    def fetch_location(self,symbol):
+    def fetch_location(self,symbol):#test
         """fetch location in this stock from news and insert into database"""
         # count = 0
         stock_id = self.get_stock_id(symbol)
