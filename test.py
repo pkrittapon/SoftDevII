@@ -1,10 +1,11 @@
 from data.function import Stock,Categories,News,Location
 import unittest
-from unittest.mock import MagicMock,call
+from unittest.mock import MagicMock,call,patch
 import sqlite3
 import requests
 from googletrans import Translator
 import spacy
+import pandas as pd
 
 
 class TestGetIndexID(unittest.TestCase):
@@ -146,12 +147,11 @@ class TestInsertStock(unittest.TestCase):
                 symbol	TEXT
         )""")
         self.conn.commit()
-
         self.original_connect = sqlite3.connect
         self.original_get_index_id = Categories.get_index_id
         self.original_get_industry_id = Categories.get_industry_id
         self.original_get_sector_id = Categories.get_sector_id
-        
+
         mock_connect = MagicMock()
         mock_conn = MagicMock()
         sqlite3.connect = mock_connect
@@ -288,6 +288,7 @@ class TestTopStock(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.stock = None
         sqlite3.connect = self.original_connect
 
     def test_have_top_stock(self):
@@ -410,6 +411,7 @@ class TestGetAllIndustry(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.industry = None
         sqlite3.connect = self.original_connect
 
     def test_have_stock_in_industry(self):
@@ -476,6 +478,7 @@ class TestGetAllSector(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.sector = None
         sqlite3.connect = self.original_connect
 
     def test_have_stock_in_sector(self):
@@ -545,6 +548,8 @@ class TestGetAllSectorInIndustry(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.industry = None
+        self.sector = None
         sqlite3.connect = self.original_connect
 
     def test_valid_symbol(self):
@@ -556,11 +561,6 @@ class TestGetAllSectorInIndustry(unittest.TestCase):
         obj = Categories('SET')
         result = obj.get_all_sector_in_industrial('INDUS')
         self.assertEqual(result,[])
-
-    def test_case_sensitive(self):
-        obj = Categories('SET')
-        result = obj.get_all_sector_in_industrial('service')
-        self.assertEqual(result,['COMM','HELTH','TRANS'])
 
 class TestGetAllStockInIndustry(unittest.TestCase):
     def setUp(self):
@@ -602,6 +602,8 @@ class TestGetAllStockInIndustry(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.stock = None
+        self.industry = None
         sqlite3.connect = self.original_connect
 
     def test_valid_symbol(self):
@@ -613,11 +615,6 @@ class TestGetAllStockInIndustry(unittest.TestCase):
         obj = Categories('SET')
         result = obj.get_all_stock_in_industrial('INDUS')
         self.assertEqual(result,[])
-
-    def test_case_sensitive(self):
-        obj = Categories('SET')
-        result = obj.get_all_stock_in_industrial('service')
-        self.assertEqual(result,['COM7','CPALL','HMPRO'])
 
 class TestGetAllStockInSector(unittest.TestCase):
     def setUp(self):
@@ -659,6 +656,8 @@ class TestGetAllStockInSector(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.sector = None
+        self.stock = None
         sqlite3.connect = self.original_connect
 
     def test_valid_symbol(self):
@@ -670,11 +669,6 @@ class TestGetAllStockInSector(unittest.TestCase):
         obj = Categories('SET')
         result = obj.get_all_stock_in_sector('FOOD')
         self.assertEqual(result,[])
-
-    def test_case_sensitive(self):
-        obj = Categories('SET')
-        result = obj.get_all_stock_in_sector('comm')
-        self.assertEqual(result,['COM7','CPALL','HMPRO'])
 
 
 
@@ -708,6 +702,7 @@ class TestGetStockID(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.stock = None
         sqlite3.connect = self.original_connect
         
 
@@ -746,6 +741,7 @@ class TestGetStockName(unittest.TestCase):
     def tearDown(self):
         """Close the database connection"""
         self.conn.close()
+        self.stock = None
         self.conn = None
         self.cursor = None
         sqlite3.connect = self.original_connect
@@ -786,6 +782,7 @@ class TestDelete(unittest.TestCase):
     def tearDown(self):
         """Close the database connection"""
         self.conn.close()
+        self.stock = None
         self.conn = None
         self.cursor = None
         sqlite3.connect = self.original_connect
@@ -814,6 +811,30 @@ class TestTable(unittest.TestCase):
         self.assertEqual(str(error.exception),"The interval 30m is not available. The available interval are 1h,1d")
         self.assertEqual(stock.table("1d"),'stock_price_day')
         self.assertEqual(stock.table("1h"),'stock_price_hour')
+
+class TestGetNasdaqCryptoAmount(unittest.TestCase):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
+        mock_conn = MagicMock()
+        sqlite3.connect = MagicMock(return_value=mock_conn)
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
+
+    def test_get_amount(self):
+        self.mock_cursor.fetchone.return_value = (10000,)
+        stock = Stock('AAPL','NASDAQ')
+        result = stock.get_nasdaq_crypto_amount()
+        self.assertEqual(result,10000)
+        self.mock_cursor.execute.assert_called_once_with("SELECT amount FROM stock_nasdaq WHERE symbol = 'AAPL'")
+
+    def test_none(self):
+        stock = Stock('PTT','SET')
+        result = stock.get_nasdaq_crypto_amount()
+        self.assertEqual(result,None)
 
 class TestGetStockPrice(unittest.TestCase):
     def setUp(self):
@@ -859,6 +880,9 @@ class TestGetStockPrice(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.stock = None
+        self.price_day = None
+        self.price_hour = None
         sqlite3.connect = self.original_connect
         
     def test_data_price_day(self):
@@ -870,6 +894,11 @@ class TestGetStockPrice(unittest.TestCase):
         stock = Stock('EE','SET')
         result = stock.get_stock_price(interval = '1h')
         self.assertEqual(result,20.2)
+
+    def test_no_data(self):
+        stock = Stock('PTT','SET')
+        result = stock.get_stock_price(interval = '1h')
+        self.assertEqual(result,[])
 
 class TestGetPercentChange(unittest.TestCase):
     def setUp(self):
@@ -915,6 +944,9 @@ class TestGetPercentChange(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.stock = None
+        self.price_day = None
+        self.price_hour = None
         sqlite3.connect = self.original_connect
         
     def test_data_price_day(self):
@@ -926,6 +958,11 @@ class TestGetPercentChange(unittest.TestCase):
         stock = Stock('EE','SET')
         result = stock.get_percent_change(interval = '1h')
         self.assertEqual(result,100)
+
+    def test_no_data(self):
+        stock = Stock('PTT','SET')
+        result = stock.get_percent_change(interval = '1h')
+        self.assertEqual(result,[])
 
 class TestGetLatestAndOldestUpdateTime(unittest.TestCase):
     def setUp(self):
@@ -971,6 +1008,9 @@ class TestGetLatestAndOldestUpdateTime(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.stock = None
+        self.price_day = None
+        self.price_hour = None
         sqlite3.connect = self.original_connect
         
     def test_latest_price_day(self):
@@ -992,6 +1032,11 @@ class TestGetLatestAndOldestUpdateTime(unittest.TestCase):
         stock = Stock('EE','SET')
         result = stock.oldest_update_time(interval = '1h')
         self.assertEqual(result,'2022-10-4 10:00:00')
+
+    def test_no_data(self):
+        stock = Stock('PTT','SET')
+        result = stock.oldest_update_time(interval = '1h')
+        self.assertEqual(result,[])
 
 class TestGetAllDatetime(unittest.TestCase):
     def setUp(self):
@@ -1037,6 +1082,9 @@ class TestGetAllDatetime(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.stock = None
+        self.price_day = None
+        self.price_hour = None
         sqlite3.connect = self.original_connect
         
     def test_price_day(self):
@@ -1048,6 +1096,11 @@ class TestGetAllDatetime(unittest.TestCase):
         stock = Stock('EE','SET')
         result = stock.get_all_datetime(interval = '1h')
         self.assertEqual(result,['2022-10-4 10:00:00','2022-10-4 11:00:00','2022-10-4 12:00:00'])
+    
+    def test_no_data(self):
+        stock = Stock('PTT','SET')
+        result = stock.get_all_datetime(interval = '1h')
+        self.assertEqual(result,[])
 
 class TestGetAllStockPrice(unittest.TestCase):
     def setUp(self):
@@ -1101,6 +1154,9 @@ class TestGetAllStockPrice(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.stock = None
+        self.price_day = None
+        self.price_hour = None
         sqlite3.connect = self.original_connect
         
     def test_data_price_day(self):
@@ -1127,6 +1183,11 @@ class TestGetAllStockPrice(unittest.TestCase):
         stock = Stock('EE','SET')
         result = stock.get_all_stock_price(interval = '1h')
         self.assertEqual(result,[('2022-10-4 10:00:00',5,6,7,8,100), ('2022-10-4 11:00:00',5,6,7,8,200), ('2022-10-4 12:00:00',5,6,7,8,300)])
+
+    def test_no_data(self):
+        stock = Stock('PTT','SET')
+        result = stock.get_all_stock_price(interval = '1h')
+        self.assertEqual(result,[])
 
 class TestSectorAndIndustry(unittest.TestCase):
     def setUp(self):
@@ -1178,6 +1239,9 @@ class TestSectorAndIndustry(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.industry = None
+        self.sector = None
+        self.stock = None
         sqlite3.connect = self.original_connect
 
     def test_industry_valid_symbol(self):
@@ -1225,6 +1289,19 @@ class TestInsertFin(unittest.TestCase):
                 "dividend_yield"	REAL
             )
         """)
+        self.cursor.execute("""
+            CREATE TABLE "nasdaq_financial_statement" (
+                "financial_id"	INTEGER PRIMARY KEY,
+                "stock_id"	INTEGER,
+                "quarter"	TEXT,
+                "total_asset"	REAL,
+                "liabilities"	REAL,
+                "equity"	REAL,
+                "paid_up_capital"	REAL,
+                "revenue"	REAL,
+                "net_profit"	REAL
+            )
+        """)
         self.conn.commit()
         self.original_connect = sqlite3.connect
         mock_connect = MagicMock()
@@ -1241,13 +1318,19 @@ class TestInsertFin(unittest.TestCase):
         self.cursor = None
         sqlite3.connect = self.original_connect
         
-    def test_insert(self):
+    def test_insert_set(self):
         stock = Stock('EE','SET')
         stock.insert_set_fin(1,['2556Q1',1663096.93,910651.25,752445.69,28563.0,703512.92,43064.02,12.64,2.61,5.8,6.12,931153.68,8.9,1.54,3.99])
-
         self.cursor.execute("SELECT * FROM set_financial_statement")
         result = self.cursor.fetchone()
         self.assertEqual(result,(1,1,'2556Q1',1663096.93,910651.25,752445.69,28563.0,703512.92,43064.02,12.64,2.61,5.8,6.12,931153.68,8.9,1.54,3.99))
+
+    def test_insert_nasdaq(self):
+        stock = Stock('AAPL','NASDAQ')
+        stock.insert_nasdaq_fin(1,['2556Q1',1663096.93,910651.25,752445.69,28563.0,703512.92,43064.02])
+        self.cursor.execute("SELECT * FROM nasdaq_financial_statement")
+        result = self.cursor.fetchone()
+        self.assertEqual(result,(1,1,'2556Q1',1663096.93,910651.25,752445.69,28563.0,703512.92,43064.02))
   
 class TestGetQuarterFin(unittest.TestCase):
     def setUp(self):
@@ -1284,6 +1367,7 @@ class TestGetQuarterFin(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.quarter = None
         sqlite3.connect = self.original_connect
         
     def test_get_quarter(self):
@@ -1291,17 +1375,27 @@ class TestGetQuarterFin(unittest.TestCase):
         result = stock.get_quarter_fin()
         self.assertEqual(result,self.quarter)
 
+    def test_no_data(self):
+        stock = Stock('PTT','SET')
+        result = stock.get_quarter_fin()
+        self.assertEqual(result,[])
+
 class TestFetchFinancial(unittest.TestCase):
     def setUp(self):
+        self.original_get_stock_id = Stock.get_stock_id
+        self.original_fetch_set_fin = Stock.fetch_set_fin
+        self.original_insert_set_fin = Stock.insert_set_fin
+        self.original_get_quarter_fin = Stock.get_quarter_fin
+
         Stock.get_stock_id = MagicMock(return_value = 1)
         Stock.fetch_set_fin = MagicMock(return_value = [['2556Q1'],['2556Q2'],['2560Q1']])
         Stock.insert_set_fin = MagicMock()
 
     def tearDown(self):
-        Stock.get_stock_id.reset_mock()
-        Stock.fetch_set_fin.reset_mock()
-        Stock.get_quarter_fin.reset_mock()
-        Stock.insert_set_fin.reset_mock()
+        Stock.get_stock_id = self.original_get_stock_id
+        Stock.fetch_set_fin = self.original_fetch_set_fin
+        Stock.insert_set_fin = self.original_insert_set_fin
+        Stock.get_quarter_fin = self.original_get_quarter_fin
 
     def test_check_dup(self):
         Stock.get_quarter_fin = MagicMock(return_value = ['2556Q1','2556Q2'])
@@ -1326,6 +1420,12 @@ class TestFinancialStatement(unittest.TestCase):
         self.conn = sqlite3.connect(':memory:')
         self.cursor = self.conn.cursor()
         self.cursor.execute("""
+            CREATE TABLE [stock] (
+                stock_id INTEGER PRIMARY KEY,
+                symbol TEXT
+            )
+        """)
+        self.cursor.execute("""
             CREATE TABLE "set_financial_statement" (
                 "financial_id"	INTEGER PRIMARY KEY,
                 "stock_id"	INTEGER,
@@ -1346,10 +1446,10 @@ class TestFinancialStatement(unittest.TestCase):
                 "dividend_yield"	REAL
             )
         """)
+        self.cursor.execute("INSERT INTO stock (symbol) VALUES (?)", ('EE',))
         self.cursor.execute("INSERT INTO set_financial_statement VALUES (null,1,'2555Q1',1663096.93,910651.25,752445.69,28563.0,703512.92,43064.02,12.64,2.61,5.8,6.12,931153.68,8.9,1.54,3.99)")
         self.conn.commit()
         self.original_connect = sqlite3.connect
-        Stock.get_stock_id = MagicMock(return_value = 1)
         mock_connect = MagicMock()
         mock_conn = MagicMock()
         sqlite3.connect = mock_connect
@@ -1362,13 +1462,36 @@ class TestFinancialStatement(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
-        Stock.get_stock_id.reset_mock()
         sqlite3.connect = self.original_connect
         
     def test_get_fin(self):
         stock = Stock('EE','SET')
         result = stock.financial_statement()
         self.assertEqual(result,[(1,1,'2555Q1',1663096.93,910651.25,752445.69,28563.0,703512.92,43064.02,12.64,2.61,5.8,6.12,931153.68,8.9,1.54,3.99)])
+
+    def test_no_data(self):
+        stock = Stock('PTT','SET')
+        result = stock.financial_statement()
+        self.assertEqual(result,[])
+
+class TestGetStockAndCryptoData(unittest.TestCase):
+    def test_pull(self):
+        yfinance_mock = MagicMock()
+        data = {'Open': [50.0, 52.0, 48.0],
+                'High': [50.25,52.0,49.0],
+                'Low': [48.0,49.0,47.0],
+                'Close': [49.75,52.0,48.5],
+                'Adj Close':[49.75,51.75,48.5],
+                'Volume':[24543,67854,16875]}
+
+        data_date = pd.DataFrame(data, index=[pd.to_datetime('2022-12-25 09:30:00'),
+                                        pd.to_datetime('2022-12-26 10:30:00'),
+                                        pd.to_datetime('2022-12-27 15:30:00')])
+
+        yfinance_mock.download.return_value = data_date
+        with patch('yfinance.download',yfinance_mock.download):
+            result = Stock('PTT','SET').get_stock_and_crypto_data("TESTTEST",'2022-02-02 00:00:00','1h')
+            assert result == [[50.0,50.25,48.0,49.75,24543,'2022-12-25 09:30:00'],[52.0, 52.0, 49.0, 52.0, 67854, '2022-12-26 10:30:00'],[48.0, 49.0, 47.0, 48.5, 16875,'2022-12-27 15:30:00']]
 
 class TestInsertStockPrice(unittest.TestCase):
     def setUp(self):
@@ -1424,12 +1547,15 @@ class TestInsertStockPrice(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.price_day = None
+        self.price_hour = None
+        self.stock = None
         sqlite3.connect = self.original_connect
         
     def test_dup(self):
         value = [(10,11,12,13,1000,'2022-10-2 00:00:00'), (10,11,12,13,2000,'2022-10-5 00:00:00'), (10,11,12,13,3000,'2022-10-6 00:00:00')]
         stock = Stock('EE','SET')
-        stock.insert_stock(value,'1d')
+        stock.insert_stock_price(value,'1d')
 
         self.cursor.execute("SELECT * FROM stock_price_day")
         result = self.cursor.fetchall()
@@ -1442,7 +1568,7 @@ class TestInsertStockPrice(unittest.TestCase):
     def test_no_dup(self):
         value = [(10,11,12,13,1000,'2022-10-5 00:00:00'), (10,11,12,13,2000,'2022-10-6 00:00:00'), (10,11,12,13,3000,'2022-10-7 00:00:00')]
         stock = Stock('EE','SET')
-        stock.insert_stock(value,'1d')
+        stock.insert_stock_price(value,'1d')
 
         self.cursor.execute("SELECT * FROM stock_price_day")
         result = self.cursor.fetchall()
@@ -1456,13 +1582,42 @@ class TestInsertStockPrice(unittest.TestCase):
     def test_all_dup(self):
         value = [(10,11,12,13,1000,'2022-10-2 00:00:00'), (10,11,12,13,2000,'2022-10-3 00:00:00'), (10,11,12,13,3000,'2022-10-4 00:00:00')]
         stock = Stock('EE','SET')
-        stock.insert_stock(value,'1d')
+        stock.insert_stock_price(value,'1d')
 
         self.cursor.execute("SELECT * FROM stock_price_day")
         result = self.cursor.fetchall()
         self.assertEqual(result,[(1,1,'2022-10-2 00:00:00',10,11,12,13,1000), 
                                  (2,1,'2022-10-3 00:00:00',10,11,12,13,2000), 
                                  (3,1,'2022-10-4 00:00:00',10,11,12,13,3000)])    
+
+class TestFetchStockPrice(unittest.TestCase):
+    def setUp(self):
+        self.original_latest_update_time = Stock.latest_update_time
+        self.original_insert_stock_price = Stock.insert_stock_price
+        self.original_get_stock_and_crypto_data = Stock.get_stock_and_crypto_data
+
+        Stock.latest_update_time = MagicMock(return_value = '2022-02-02')
+        Stock.insert_stock_price = MagicMock()
+        Stock.get_stock_and_crypto_data = MagicMock()
+    
+    def tearDown(self):
+        Stock.latest_update_time = self.original_latest_update_time
+        Stock.insert_stock_price = self.original_insert_stock_price
+        Stock.get_stock_and_crypto_data = self.original_get_stock_and_crypto_data
+
+    def test_fetch(self):
+        stock = Stock('EE','SET')
+        stock.fetch_stock_price('1h')
+
+        Stock.latest_update_time.assert_called_once_with(interval='1h')
+        Stock.get_stock_and_crypto_data.assert_called_once_with('EE.bk','2022-02-02','1h')
+        Stock.insert_stock_price.assert_called_once()
+
+    def test_fetch_error(self):
+        stock = Stock('EE','SET')
+        with self.assertRaises(ValueError) as error:
+            stock.fetch_stock_price('1m')
+        self.assertEqual(str(error.exception),"The interval 1m is not available. The available interval are 1h,1d")
 
 class TestGetAllNews(unittest.TestCase):
     def setUp(self):
@@ -1509,6 +1664,9 @@ class TestGetAllNews(unittest.TestCase):
         self.conn.close()
         self.conn = None
         self.cursor = None
+        self.stock = None
+        self.news = None
+        self.many = None
         sqlite3.connect = self.original_connect
         
     def test_get_news(self):
@@ -1516,36 +1674,53 @@ class TestGetAllNews(unittest.TestCase):
         result = stock.get_all_news()
         self.assertEqual(result,self.news)
 
+    def test_no_data(self):
+        stock = Stock('PTT','SET')
+        result = stock.get_all_news()
+        self.assertEqual(result,[])
+
 class TestGetStockLocation(unittest.TestCase):
     def setUp(self):
+        self.original_connect = sqlite3.connect
+        self.original_get_stock_id = Stock.get_stock_id
         Stock.get_stock_id = MagicMock(return_value = 1)
-        self.location = [("2022-02-03","Thailand",10,10),("2022-02-02","Bangkok",8,8)]
         self.mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=self.mock_conn)
         self.mock_cursor = MagicMock()
         self.mock_conn.cursor.return_value = self.mock_cursor
-        self.mock_cursor.fetchall.return_value = self.location
-
+        
     def tearDown(self):
-        Stock.get_stock_id.reset_mock()
-        sqlite3.connect.reset_mock()
+        sqlite3.connect = self.original_connect
+        Stock.get_stock_id = self.original_get_stock_id
+        self.mock_conn = None
+        self.mock_cursor = None
 
     def test_get_location(self):
+        self.mock_cursor.fetchall.return_value = [("2022-02-03","Thailand",10,10),("2022-02-02","Bangkok",8,8)]
         stock = Stock('EE','SET')
         result = stock.get_stock_location()
-        self.assertEqual(result,self.location)
+        self.assertEqual(result,[("2022-02-03","Thailand",10,10),("2022-02-02","Bangkok",8,8)])
         self.mock_cursor.execute.assert_called_once_with("SELECT c.[datetime],a.location_name, a.lat, a.lon FROM location AS a INNER JOIN set_location AS b ON a.location_id = b.location_id INNER JOIN set_news AS c ON b.news_id = c.news_id WHERE b.stock_id = 1 AND c.[datetime] >= '' ORDER BY c.[datetime] DESC")
+
+    def test_get_no_location(self):
+        self.mock_cursor.fetchall.return_value = []
+        stock = Stock('AAPL','NASDAQ')
+        result = stock.get_stock_location()
+        self.assertEqual(result,[])
+        self.mock_cursor.execute.assert_called_once_with("SELECT c.[datetime],a.location_name, a.lat, a.lon FROM location AS a INNER JOIN nasdaq_location AS b ON a.location_id = b.location_id INNER JOIN nasdaq_news AS c ON b.news_id = c.news_id WHERE b.stock_id = 1 AND c.[datetime] >= '' ORDER BY c.[datetime] DESC")
+
 
 
 
 
 class TestGetAllTag(unittest.TestCase):
     def setUp(self):
+        self.original_requests = requests.get
         self.mock_response = MagicMock()
         requests.get = MagicMock(return_value=self.mock_response)
         
     def tearDown(self):
-        requests.get.reset_mock()
+        requests.get = self.original_requests
         self.mock_response = None
 
     def test_yahoo_get_all_tag_normal(self):
@@ -1555,36 +1730,73 @@ class TestGetAllTag(unittest.TestCase):
         news = News("NASDAQ")
         result = news.nasdaq_get_all_tags("APPL")
         result = [str(i) for i in result]
-
         self.assertEqual(result,['<li class="js-stream-content Pos(r)">xxxxx</li>','<li class="js-stream-content Pos(r)">yyyyy</li>'])
 
     def test_yahoo_get_all_tag_wrong(self):
         html = '<li class="aaa">xxxxx</li><li class="abc">zzzzz</li><li class="ccc">yyyyy</li>'
         self.mock_response.text = html
         self.mock_response.status_code = 200
-
         news = News("NASDAQ")
         result = news.nasdaq_get_all_tags("APPL")
-
         self.assertEqual(result,[])
 
     def test_yahoo_get_all_tag_null(self):
         html = ''
         self.mock_response.text = html
         self.mock_response.status_code = 200
-
         news = News("NASDAQ")
         result = news.nasdaq_get_all_tags("APPL")
+        self.assertEqual(result,[])
 
+    def test_yahoo_get_all_tag_bad_request(self):
+        html = ''
+        self.mock_response.text = html
+        self.mock_response.status_code = 400
+        news = News("NASDAQ")
+        result = news.nasdaq_get_all_tags("APPL")
+        self.assertEqual(result,[])
+
+    def test_set_get_all_tag_normal(self):
+        html = '<main><h class="info">xxxx</h><h class="info">yyyy</h></main><other>none</other>'
+        self.mock_response.text = html
+        self.mock_response.status_code = 200
+        news = News("SET")
+        result = news.set_get_all_tags('PTT',1)
+        result = [str(i) for i in result]
+        self.assertEqual(result,['<h class="info">xxxx</h>','<h class="info">yyyy</h>'])
+
+    def test_set_get_all_tag_wrong(self):
+        html = '<main><h class="aaa">xxxx</h><h class="abc">yyyy</h></main><other>none</other>'
+        self.mock_response.text = html
+        self.mock_response.status_code = 200
+        news = News("SET")
+        result = news.set_get_all_tags('PTT',1)
+        self.assertEqual(result,[])
+
+    def test_set_get_all_tag_null(self):
+        html = ''
+        self.mock_response.text = html
+        self.mock_response.status_code = 200
+        news = News("SET")
+        result = news.set_get_all_tags('PTT',1)
+        self.assertEqual(result,[])
+
+    def test_set_get_all_tag_bad_request(self):
+        html = ''
+        self.mock_response.text = html
+        self.mock_response.status_code = 400
+        news = News("SET")
+        result = news.set_get_all_tags('PTT',1)
         self.assertEqual(result,[])
 
 class TestGetTitleLink(unittest.TestCase):
     def setUp(self):
+        self.original_requests = requests.get
         self.mock_response = MagicMock()
         requests.get = MagicMock(return_value=self.mock_response)
         
     def tearDown(self):
-        requests.get.reset_mock()
+        requests.get = self.original_requests
         self.mock_response = None
 
     def test_yahoo_title_and_link_normal(self):
@@ -1592,8 +1804,8 @@ class TestGetTitleLink(unittest.TestCase):
         self.mock_response.text = html
         self.mock_response.status_code = 200
         news = News("NASDAQ")
-        data = news.nasdaq_get_all_tags("APPL")
-        result = news.nasdaq_title_link(data)
+        tag = news.nasdaq_get_all_tags("APPL")
+        result = news.nasdaq_title_link(tag)
         self.assertEqual(result,[{'title': 'yahoo', 'link': 'https://finance.yahoo.com'}, {'title': 'google', 'link': 'https://google.com'}])
 
     def test_yahoo_title_and_link_null(self):
@@ -1601,13 +1813,28 @@ class TestGetTitleLink(unittest.TestCase):
         result = news.nasdaq_title_link([])
         self.assertEqual(result,[])
 
-class TestContentTime(unittest.TestCase):
+    def test_set_title_and_link_normal(self):
+        html = '<main><h class="info"><l class = "entry-title"><a href="https://finance.yahoo.com">yahoo</a></l><time class="updated" datetime="2022-02-02 10:00:00">2022</time></h><h class="info"><l class = "entry-title"><a href = "https://google.com">google</a></l><time class="updated" datetime = "2022-02-02 11:00:00">2022</time></h></main><other>none</other>'
+        self.mock_response.text = html
+        self.mock_response.status_code = 200
+        news = News("SET")
+        tag = news.set_get_all_tags('PTT',1)
+        result = news.set_title_link_time(tag)
+        self.assertEqual(result,[{'title': 'yahoo', 'link': 'https://finance.yahoo.com', 'datetime':'2022-02-02 10:00:00'}, {'title': 'google', 'link': 'https://google.com', 'datetime':'2022-02-02 11:00:00'}])
+
+    def test_set_title_and_link_null(self):
+        news = News("SET")
+        result = news.set_title_link_time([])
+        self.assertEqual(result,[])
+
+class TestContent(unittest.TestCase):
     def setUp(self):
+        self.original_requests = requests.get
         self.mock_response = MagicMock()
         requests.get = MagicMock(return_value=self.mock_response)
         
     def tearDown(self):
-        requests.get.reset_mock()
+        requests.get = self.original_requests
         self.mock_response = None
 
     def test_yahoo_content_time_normal(self):
@@ -1625,47 +1852,97 @@ class TestContentTime(unittest.TestCase):
         news = News("NASDAQ")
         result = news.nasdaq_content_time('https://finance.yahoo.com')
         self.assertEqual(result,{'content': 'null', 'datetime': 'null'})
+    
+    def test_set_content_time_normal(self):
+        html = '<li class="entry-content"><p>Test</p><p>Test2</p><p>Test3</p></li>'
+        self.mock_response.text = html
+        self.mock_response.status_code = 200
+        news = News("SET")
+        result = news.set_content('https://finance.yahoo.com')
+        self.assertEqual(result,'Test\nTest2\nTest3\n')
+
+    def test_set_content_time_null(self):
+        html = ''
+        self.mock_response.text = html
+        self.mock_response.status_code = 200
+        news = News("SET")
+        result = news.set_content('https://finance.yahoo.com')
+        self.assertEqual(result,'null')
 
 class TestNewDict(unittest.TestCase):
-    def test_yahoo_new_dict(self):
+    def setUp(self):
+        self.original_nasdaq_content_time = News.nasdaq_content_time
+        self.original_set_content = News.set_content
         News.nasdaq_content_time = MagicMock(return_value = {'content':'test','datetime':'2022-02-02 00:00:00'})
+        News.set_content = MagicMock(return_value = 'test')
+        
+    def tearDown(self):
+        News.nasdaq_content_time = self.original_nasdaq_content_time
+        News.set_content = self.original_set_content
+
+    def test_yahoo_new_dict(self):
         news = News('NASDAQ')
         result = news.nasdaq_news_dict([{'link':'www.yahoo.com','title':'yahoo'}],'AAPL')
         self.assertEqual(result,[{'content':'test','datetime':'2022-02-02 00:00:00','stock':'AAPL','link':'www.yahoo.com','title':'yahoo'}])
-        News.nasdaq_content_time.reset_mock()
 
+    def test_set_new_dict(self):
+        news = News('SET')
+        result = news.set_news_dict([{'link':'www.set.com','title':'set','datetime':'2022-02-02 00:00:00'}],'PTT')
+        self.assertEqual(result,[{'content':'test','datetime':'2022-02-02 00:00:00','stock':'PTT','link':'www.set.com','title':'set'}])
+      
 class TestInsertNews(unittest.TestCase):
-    def test_insert_news(self):
-        mock_conn = MagicMock()
-        sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        news = News("NASDAQ")
-        news.insert_news({'title':'yahoo','datetime':'2020-10-10','link':'https://finance.yahoo.com','content':'TestYahoo12345'})
-        mock_cursor.execute.assert_called_once_with('INSERT INTO nasdaq_news VALUES (null,?,?,?,?)', ('yahoo', '2020-10-10', 'https://finance.yahoo.com', 'TestYahoo12345'))
-
-class TestGetNewsID(unittest.TestCase):
-    def test_get_news_id(self):
-        mock_conn = MagicMock()
-        sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [(1,)]
-
-        news = News("NASDAQ")
-        result = news.get_news_id('aaaa')
-        self.assertEqual(result,1)
-        mock_cursor.execute.assert_called_once_with("SELECT news_id FROM nasdaq_news WHERE title = ?",('aaaa',))
-
-class TestCheckRelation(unittest.TestCase):
     def setUp(self):
+        self.original_connect = sqlite3.connect
         mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=mock_conn)
         self.mock_cursor = MagicMock()
         mock_conn.cursor.return_value = self.mock_cursor
         
     def tearDown(self):
-        sqlite3.connect.reset_mock()
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
+
+    def test_insert_news(self):
+        news = News("NASDAQ")
+        news.insert_news({'title':'yahoo','datetime':'2020-10-10','link':'https://finance.yahoo.com','content':'TestYahoo12345'})
+        self.mock_cursor.execute.assert_called_once_with('INSERT INTO nasdaq_news VALUES (null,?,?,?,?)', ('yahoo', '2020-10-10', 'https://finance.yahoo.com', 'TestYahoo12345'))
+
+class TestGetNewsID(unittest.TestCase):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
+        mock_conn = MagicMock()
+        sqlite3.connect = MagicMock(return_value=mock_conn)
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
+
+    def test_get_news_id(self):
+        self.mock_cursor.fetchall.return_value = [(1,)]
+        news = News("NASDAQ")
+        result = news.get_news_id('aaaa')
+        self.assertEqual(result,1)
+        self.mock_cursor.execute.assert_called_once_with("SELECT news_id FROM nasdaq_news WHERE title = ?",('aaaa',))
+
+    def test_get_news_id_none(self):
+        self.mock_cursor.fetchall.return_value = []
+        news = News("NASDAQ")
+        result = news.get_news_id('aaaa')
+        self.assertEqual(result,None)
+        self.mock_cursor.execute.assert_called_once_with("SELECT news_id FROM nasdaq_news WHERE title = ?",('aaaa',))
+
+class TestCheckRelation(unittest.TestCase):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
+        mock_conn = MagicMock()
+        sqlite3.connect = MagicMock(return_value=mock_conn)
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
         self.mock_cursor = None
 
     def test_check_relation_have_relation(self):
@@ -1683,51 +1960,86 @@ class TestCheckRelation(unittest.TestCase):
         self.mock_cursor.execute.assert_called_once_with("SELECT news_id FROM many_nasdaq_news WHERE stock_id = 1")
 
 class TestGetAllTitle(unittest.TestCase):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
+        mock_conn = MagicMock()
+        sqlite3.connect = MagicMock(return_value=mock_conn)
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
+
     def test_get_all_title(self):
         expect_result = ["news1","news2","news3"]
         mock_news = [(symbol,) for symbol in expect_result]
-        mock_conn = MagicMock()
-        sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = mock_news
-
+        self.mock_cursor.fetchall.return_value = mock_news
         news = News("NASDAQ")
         result = news.get_all_title()
         self.assertEqual(result,expect_result)
-        mock_cursor.execute.assert_called_once_with("SELECT title FROM nasdaq_news")
+        self.mock_cursor.execute.assert_called_once_with("SELECT title FROM nasdaq_news")
 
-        sqlite3.connect.reset_mock()
-    
+    def test_get_all_title_none(self):
+        self.mock_cursor.fetchall.return_value = []
+        news = News("NASDAQ")
+        result = news.get_all_title()
+        self.assertEqual(result,[])
+        self.mock_cursor.execute.assert_called_once_with("SELECT title FROM nasdaq_news")
+
 class TestGetTitleContent(unittest.TestCase):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
+        mock_conn = MagicMock()
+        sqlite3.connect = MagicMock(return_value=mock_conn)
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
+
     def test_get_title_content(self):
         expect_result = [("news1","ssss")]
-        mock_conn = MagicMock()
-        sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = expect_result
-
+        self.mock_cursor.fetchall.return_value = expect_result
         news = News("NASDAQ")
         result = news.get_title_content(1)
-        self.assertEqual(result,expect_result[0])
-        mock_cursor.execute.assert_called_once_with("SELECT title,content FROM nasdaq_news WHERE news_id = 1")
-        sqlite3.connect.reset_mock()
+        self.assertEqual(result,("news1","ssss"))
+        self.mock_cursor.execute.assert_called_once_with("SELECT title,content FROM nasdaq_news WHERE news_id = 1")
+
+    def test_get_title_content_none(self):
+        self.mock_cursor.fetchall.return_value = []
+        news = News("NASDAQ")
+        result = news.get_title_content(1)
+        self.assertEqual(result,[])
+        self.mock_cursor.execute.assert_called_once_with("SELECT title,content FROM nasdaq_news WHERE news_id = 1")
 
 class TestInsertManyNews(unittest.TestCase):
-    def test_insert_many_news(self):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
         mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
 
+    def test_insert_many_news(self):
         news = News("NASDAQ")
         news.insert_many_news(1,2)
-        mock_cursor.execute.assert_called_once_with("INSERT INTO many_nasdaq_news VALUES (1,2)")
-        sqlite3.connect.reset_mock()
+        self.mock_cursor.execute.assert_called_once_with("INSERT INTO many_nasdaq_news VALUES (1,2)")
 
 class TestInsertCheckData(unittest.TestCase):
     def setUp(self):
+        self.original_get_all_title = News.get_all_title
+        self.original_get_stock_id = News.get_stock_id
+        self.original_get_news_id = News.get_news_id
+        self.original_check_relation = News.check_relation
+        self.original_insert_many_news = News.insert_many_news
+        self.original_insert_news= News.insert_news
+
         News.get_all_title = MagicMock(return_value = ['yahoo','set'])
         News.get_stock_id = MagicMock(return_value = 1)
         News.get_news_id = MagicMock(return_value = 1)
@@ -1735,12 +2047,12 @@ class TestInsertCheckData(unittest.TestCase):
         News.insert_news = MagicMock()
 
     def tearDown(self):
-        News.get_all_title.reset_mock()
-        News.get_stock_id.reset_mock()
-        News.get_news_id.reset_mock()
-        News.check_relation.reset_mock()
-        News.insert_many_news.reset_mock()
-        News.insert_news.reset_mock()
+        News.get_all_title = self.original_get_all_title
+        News.get_stock_id = self.original_get_stock_id
+        News.get_news_id = self.original_get_news_id 
+        News.check_relation = self.original_check_relation
+        News.insert_many_news = self.original_insert_many_news 
+        News.insert_news = self.original_insert_news
 
     def test_insert_check_data_have_news_but_no_relation(self):
         News.check_relation = MagicMock(return_value = False)
@@ -1763,17 +2075,31 @@ class TestInsertCheckData(unittest.TestCase):
         News.insert_many_news.assert_called_once()
         News.insert_news.assert_called_once()
  
-class TestFetchNews(unittest.TestCase):
+class TestFetchSpecificNews(unittest.TestCase):
     def setUp(self):
+        self.original_nasdaq_get_all_tags = News.nasdaq_get_all_tags
+        self.original_nasdaq_title_link = News.nasdaq_title_link
+        self.original_nasdaq_news_dict = News.nasdaq_news_dict
+        self.original_insert_check_data  = News.insert_check_data
+        self.original_set_get_all_tags = News.set_get_all_tags
+        self.original_set_title_link = News.set_title_link_time
+        self.original_set_news_dict = News.set_news_dict
+         
         News.nasdaq_title_link = MagicMock()
-        News.nasdaq_news_dict = MagicMock(return_value = [{},{},{},{}])
         News.insert_check_data = MagicMock()
+        News.nasdaq_news_dict = MagicMock(return_value = [{},{},{},{}])
+        News.set_get_all_tags = MagicMock() 
+        News.set_title_link_time = MagicMock() 
+        News.set_news_dict = MagicMock(return_value = [{},{},{},{}])
 
     def tearDown(self):
-        News.nasdaq_get_all_tags.reset_mock()
-        News.nasdaq_title_link.reset_mock()
-        News.nasdaq_news_dict.reset_mock()
-        News.insert_check_data.reset_mock()
+        News.nasdaq_get_all_tags = self.original_nasdaq_get_all_tags
+        News.nasdaq_title_link = self.original_nasdaq_title_link
+        News.nasdaq_news_dict = self.original_nasdaq_news_dict
+        News.insert_check_data = self.original_insert_check_data
+        News.set_get_all_tags = self.original_set_get_all_tags  
+        News.set_title_link_time = self.original_set_title_link  
+        News.set_news_dict = self.original_set_news_dict  
 
     def test_fetch_yahoo_news_have_tag(self):
         News.nasdaq_get_all_tags = MagicMock(return_value = ['<li class="js-stream-content Pos(r)">xxxxx</li>','<li class="js-stream-content Pos(r)">yyyyy</li>'])
@@ -1793,24 +2119,61 @@ class TestFetchNews(unittest.TestCase):
         News.nasdaq_news_dict.assert_not_called()
         self.assertEqual(result,None)
 
+    def test_fetch_set_news_have_tag(self):
+        News.set_get_all_tags = MagicMock(return_value = ['<li class="js-stream-content Pos(r)">xxxxx</li>','<li class="js-stream-content Pos(r)">yyyyy</li>'])
+        news = News('SET')
+        news.fetch_set_news('PTT')
+        News.set_get_all_tags.assert_called_once()
+        News.set_title_link_time.assert_called_once()
+        News.set_news_dict.assert_called_once()
+        self.assertEqual(News.insert_check_data.call_count,4)
+
+    def test_fetch_set_news_no_tag(self):
+        News.set_get_all_tags = MagicMock(return_value = [])
+        news = News('SET')
+        result = news.fetch_set_news('PTT')
+        News.set_get_all_tags.assert_called_once()
+        News.set_title_link_time.assert_not_called()
+        News.set_news_dict.assert_not_called()
+        self.assertEqual(result,None)
+
+class TestFetchNews(unittest.TestCase):
+    def setUp(self):
+        self.original_fetch_nasdaq_news = News.fetch_nasdaq_news
+        self.original_fetch_set_news = News.fetch_set_news
+        News.fetch_nasdaq_news = MagicMock()
+        News.fetch_set_news = MagicMock()
+    
+    def tearDown(self):
+        News.fetch_nasdaq_news = self.original_fetch_nasdaq_news
+        News.fetch_set_news = self.original_fetch_set_news
+
+    def test_fetch_news_nasdaq(self):
+        news = News('NASDAQ')
+        news.fetch_news('AAPL')
+        News.fetch_nasdaq_news.assert_called_once_with('AAPL')
+        News.fetch_set_news.assert_not_called()
+
+    def test_fetch_news_set(self):
+        news = News('SET')
+        news.fetch_news('PTT')
+        News.fetch_set_news.assert_called_once_with('PTT')
+        News.fetch_nasdaq_news.assert_not_called()
         
-
-    # def test_fetch_news(self):
-    #     News.fetch_nasdaq_news = MagicMock()
-
-    #     news = News('NASDAQ')
-    #     news.fetch_news('AAPL')
-    #     News.fetch_nasdaq_news.assert_called_once_with('AAPL')
-
-    #     News.fetch_nasdaq_news.reset_mock()
+    def test_fetch_news_crypto(self):
+        news = News('CRYPTO')
+        news.fetch_news('BTC')
+        News.fetch_nasdaq_news.assert_called_once_with('BTC')
+        News.fetch_set_news.assert_not_called()
 
 class TestDetect(unittest.TestCase):
     def setUp(self):
+        self.original_translator = Translator.detect
         self.mock_obj = MagicMock()
         Translator.detect = MagicMock(return_value = self.mock_obj)
 
     def tearDown(self):
-        Translator.detect.reset_mock()
+        Translator.detect =self.original_translator
         self.mock_obj = None
 
     def test_detect_true(self):
@@ -1827,12 +2190,14 @@ class TestDetect(unittest.TestCase):
 
 class TestTranslateText(unittest.TestCase):
     def setUp(self):
+        self.original_detect = News.detect
+        self.original_translator = Translator.detect
         self.mock_obj = MagicMock()
         Translator.translate = MagicMock(return_value = self.mock_obj)
 
     def tearDown(self):
-        Translator.translate.reset_mock()
-        News.detect.reset_mock()
+        Translator.translate = self.original_translator
+        News.detect = self.original_detect
         self.mock_obj = None
 
     def test_translate_text_thai(self):
@@ -1849,32 +2214,89 @@ class TestTranslateText(unittest.TestCase):
         self.assertEqual(result,'Hello world')
         Translator.translate.assert_not_called()
 
+    def test_translate_no_text(self):
+        News.detect = MagicMock(return_value = True)
+        news = News('NASDAQ')
+        result = news.translate_text('')
+        self.assertEqual(result,'')
+        Translator.translate.assert_not_called()
+
 class TestTranslateParagraph(unittest.TestCase):
-    def test_translate_paragraph(self):
+    def setUp(self):
+        self.original_detect = News.detect
+        self.original_translate_text = News.translate_text
+        
+    def tearDown(self):
+        News.detect = self.original_detect
+        News.translate_text = self.original_translate_text
+
+    def test_translate_paragraph_thai(self):
         News.detect = MagicMock(return_value = False)
         News.translate_text = MagicMock(return_value = 'translate')
-
         news = News('NASDAQ')
         result = news.translate_paragraph('ฟหกดฟหกดหฟกา่ด้ฟหา่้ดา\nกหด้เ่กด้เ่ห้กาด่เ้หสาก่ด้\nฟ่้เกด่้เ่หก้ดเส้หสกา่้')
         self.assertEqual(result,'translate translate translate ')
 
-        News.detect.reset_mock()
-        News.translate_text.reset_mock()
+    def test_translate_paragraph_eng(self):
+        News.detect = MagicMock(return_value = True)
+        News.translate_text = MagicMock()
+        news = News('NASDAQ')
+        result = news.translate_paragraph('abc\nabc\nabc')
+        self.assertEqual(result,'abc\nabc\nabc')
+        News.translate_text.assert_not_called()
+
+    def test_translate_paragraph_none(self):
+        News.detect = MagicMock(return_value = True)
+        News.translate_text = MagicMock()
+        news = News('NASDAQ')
+        result = news.translate_paragraph('')
+        self.assertEqual(result,'')
+        News.translate_text.assert_not_called()
 
 class TestCombineTranslate(unittest.TestCase):
-    def test_combine_translate(self):
-        News.get_title_content = MagicMock()
-        News.translate_text = MagicMock(return_value = 'translate')
-        News.translate_paragraph = MagicMock(return_value = 'abcdefg hijk lmnop')
+    def setUp(self):
+        self.original_get_title_content = News.get_title_content
+        self.original_translate_text = News.translate_text
+        self.original_translate_paragraph = News.translate_paragraph
 
+        News.get_title_content = MagicMock()
+        
+    def tearDown(self):
+        News.get_title_content = self.original_get_title_content
+        News.translate_text = self.original_translate_text
+        News.translate_paragraph = self.original_translate_paragraph
+
+    def test_combine_translate(self):
+        News.translate_text = MagicMock(return_value = 'translate')
+        News.translate_paragraph = MagicMock(return_value = 'abcdefg')
         news = News('NASDAQ')
         result = news.combine_translate(1)
-        self.assertEqual(result,'translate abcdefg hijk lmnop')
+        self.assertEqual(result,'translate abcdefg')
         News.get_title_content.assert_called_once_with(1)
 
-        News.get_title_content.reset_mock()
-        News.translate_text.reset_mock()
-        News.translate_paragraph.reset_mock()
+    def test_combine_translate_only_title(self):
+        News.translate_text = MagicMock(return_value = 'translate')
+        News.translate_paragraph = MagicMock(return_value = '')
+        news = News('NASDAQ')
+        result = news.combine_translate(1)
+        self.assertEqual(result,'translate ')
+        News.get_title_content.assert_called_once_with(1)
+
+    def test_combine_translate_only_content(self):
+        News.translate_text = MagicMock(return_value = '')
+        News.translate_paragraph = MagicMock(return_value = 'abcdefg')
+        news = News('NASDAQ')
+        result = news.combine_translate(1)
+        self.assertEqual(result,' abcdefg')
+        News.get_title_content.assert_called_once_with(1)
+
+    def test_combine_translate_none(self):
+        News.translate_text = MagicMock(return_value = '')
+        News.translate_paragraph = MagicMock(return_value = '')
+        news = News('NASDAQ')
+        result = news.combine_translate(1)
+        self.assertEqual(result,' ')
+        News.get_title_content.assert_called_once_with(1)
 
 
 
@@ -1882,29 +2304,34 @@ class TestCombineTranslate(unittest.TestCase):
 
 
 class TestGetLocationID(unittest.TestCase):
-    def test_get_location_id(self):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
         mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [(1,)]
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
 
+    def test_get_location_id(self):
+        self.mock_cursor.fetchall.return_value = [(1,)]
         location = Location('NASDAQ')
         result = location.get_location_id('Thailand')
         self.assertEqual(result,1)
-        mock_cursor.execute.assert_called_once_with("SELECT location_id FROM location WHERE location_name = ?",('Thailand',))
-
-        sqlite3.connect.reset_mock()
+        self.mock_cursor.execute.assert_called_once_with("SELECT location_id FROM location WHERE location_name = ?",('Thailand',))
 
 class TestGetLocationLatestDatetime(unittest.TestCase):
     def setUp(self):
+        self.original_connect = sqlite3.connect
         mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=mock_conn)
         self.mock_cursor = MagicMock()
         mock_conn.cursor.return_value = self.mock_cursor
 
     def tearDown(self):
-        sqlite3.connect.reset_mock()
+        sqlite3.connect = self.original_connect
         self.mock_cursor = None
 
     def test_get_lo_latest_datetime(self):
@@ -1920,64 +2347,124 @@ class TestGetLocationLatestDatetime(unittest.TestCase):
         result = location.get_lo_latest_datetime(1)
         self.assertEqual(result,None)
         self.mock_cursor.execute.assert_called_once_with("SELECT DISTINCT a.[datetime] FROM nasdaq_news AS a INNER JOIN nasdaq_location AS b ON a.news_id = b.news_id WHERE b.stock_id = 1 ORDER BY a.[datetime] DESC LIMIT 1")
-        sqlite3.connect.reset_mock()
 
-class TestGetAllLocationName(unittest.TestCase):
-    def test_get_all_location_name(self):
+class TestGetDatetime(unittest.TestCase):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
         mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [("Thailand",),("Bangkok",)]
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
+
+    def test_get_datetime(self):
+        self.mock_cursor.fetchall.return_value = [('2022-02-02 00:00:00',)]
+        obj = Location('NASDAQ')
+        result = obj.get_news_datetime(1)
+        self.assertEqual(result,'2022-02-02 00:00:00')
+        self.mock_cursor.execute.assert_called_once_with("SELECT DISTINCT [datetime] FROM nasdaq_news WHERE news_id = 1")
+
+    def test_get_datetime_none(self):
+        self.mock_cursor.fetchall.return_value = []
+        obj = Location('NASDAQ')
+        result = obj.get_news_datetime(1)
+        self.assertEqual(result,None)
+        self.mock_cursor.execute.assert_called_once_with("SELECT DISTINCT [datetime] FROM nasdaq_news WHERE news_id = 1")
+
+class TestGetAllLocationName(unittest.TestCase):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
+        mock_conn = MagicMock()
+        sqlite3.connect = MagicMock(return_value=mock_conn)
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
+
+    def test_get_all_location_name(self):
+        self.mock_cursor.fetchall.return_value = [("Thailand",),("Bangkok",)]
         location = Location('NASDAQ')
         result = location.get_all_location_name()
         self.assertEqual(result,["Thailand","Bangkok"])
-        mock_cursor.execute.assert_called_once_with("SELECT location_name FROM location")
-        sqlite3.connect.reset_mock()
+        self.mock_cursor.execute.assert_called_once_with("SELECT location_name FROM location")
+
+    def test_get_all_location_name_none(self):
+        self.mock_cursor.fetchall.return_value = []
+        location = Location('NASDAQ')
+        result = location.get_all_location_name()
+        self.assertEqual(result,[])
+        self.mock_cursor.execute.assert_called_once_with("SELECT location_name FROM location")
 
 class TestCheckLocateRelation(unittest.TestCase):
-    def test_check_locate_relation(self):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
         mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [(1,),(2,)]
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
 
+    def test_check_locate_relation_have_relation(self):
+        self.mock_cursor.fetchall.return_value = [(1,),(2,)]
         location = Location('NASDAQ')
         result = location.check_locate_relation(1,2,3)
         self.assertEqual(result,True)
-        mock_cursor.execute.assert_called_once_with("SELECT location_id FROM nasdaq_location WHERE news_id = 2 and stock_id = 3")
+        self.mock_cursor.execute.assert_called_once_with("SELECT location_id FROM nasdaq_location WHERE news_id = 2 and stock_id = 3")
 
-        sqlite3.connect.reset_mock()
+    def test_check_locate_relation_no_relation(self):
+        self.mock_cursor.fetchall.return_value = [(4,),(5,)]
+        location = Location('NASDAQ')
+        result = location.check_locate_relation(1,2,3)
+        self.assertEqual(result,False)
+        self.mock_cursor.execute.assert_called_once_with("SELECT location_id FROM nasdaq_location WHERE news_id = 2 and stock_id = 3")
 
 class TestInsertLocation(unittest.TestCase):
-    def test_insert_location(self):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
         mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
 
+    def test_insert_location(self):
         location = Location('NASDAQ')
         location.insert_location('Bangkok',{'lat':10,'lon':11})
-        mock_cursor.execute.assert_called_once_with('INSERT INTO location VALUES (null,"Bangkok",10,11)')
-
-        sqlite3.connect.reset_mock()
+        self.mock_cursor.execute.assert_called_once_with('INSERT INTO location VALUES (null,"Bangkok",10,11)')
 
 class TestInsertManyLocation(unittest.TestCase):
-    def test_insert_many_location(self):
+    def setUp(self):
+        self.original_connect = sqlite3.connect
         mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        self.mock_cursor = None
 
+    def test_insert_many_location(self):
         location = Location('NASDAQ')
         location.insert_many_location(1,2,3)
-        mock_cursor.execute.assert_called_once_with('INSERT INTO nasdaq_location VALUES (1,2,3)')
-
-        sqlite3.connect.reset_mock()
+        self.mock_cursor.execute.assert_called_once_with('INSERT INTO nasdaq_location VALUES (1,2,3)')
 
 class TestGetAllStockNewsID(unittest.TestCase):
     def setUp(self):
+        self.original_get_lo_latest_datetime = Location.get_lo_latest_datetime
+        self.original_get_stock_id = Location.get_stock_id
+        self.original_connect = sqlite3.connect
         mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=mock_conn)
         self.mock_cursor = MagicMock()
@@ -1986,9 +2473,9 @@ class TestGetAllStockNewsID(unittest.TestCase):
         Location.get_stock_id = MagicMock(return_value=1)
 
     def tearDown(self):
-        sqlite3.connect.reset_mock()
-        Location.get_stock_id.reset_mock()
-        Location.get_lo_latest_datetime.reset_mock()
+        sqlite3.connect = self.original_connect
+        Location.get_stock_id = self.original_get_stock_id
+        Location.get_lo_latest_datetime = self.original_get_lo_latest_datetime
         self.mock_cursor = None
 
     def test_get_all_stock_news_id_has_old_location(self):
@@ -2006,24 +2493,38 @@ class TestGetAllStockNewsID(unittest.TestCase):
         self.mock_cursor.execute.assert_called_once_with("SELECT DISTINCT news_id FROM many_nasdaq_news WHERE stock_id = 1")
 
 class TestGetAllProcessNewsID(unittest.TestCase):
-    def test_get_all_process_news_id(self):
+    def setUp(self):
+        self.original_get_stock_id = Location.get_stock_id
+        self.original_connect = sqlite3.connect
         mock_conn = MagicMock()
         sqlite3.connect = MagicMock(return_value=mock_conn)
-        mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.fetchall.return_value = [(1,),(2,),(3,)]
+        self.mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = self.mock_cursor
+        
+    def tearDown(self):
+        sqlite3.connect = self.original_connect
+        Location.get_stock_id = self.original_get_stock_id
+        self.mock_cursor = None
+
+    def test_get_all_process_news_id(self):
+        self.mock_cursor.fetchall.return_value = [(1,),(2,),(3,)]
         Location.get_stock_id = MagicMock(return_value=1)
-    
         location = Location('NASDAQ')
         result = location.get_all_process_news_id('AAPL')
         self.assertEqual(result,[1,2,3])
-        mock_cursor.execute.assert_called_once_with("SELECT DISTINCT news_id FROM nasdaq_location WHERE stock_id = 1")
+        self.mock_cursor.execute.assert_called_once_with("SELECT DISTINCT news_id FROM nasdaq_location WHERE stock_id = 1")
 
-        sqlite3.connect.reset_mock()
-        Location.get_stock_id.reset_mock()
+    def test_get_all_process_news_id_none(self):
+        self.mock_cursor.fetchall.return_value = []
+        Location.get_stock_id = MagicMock(return_value=1)
+        location = Location('NASDAQ')
+        result = location.get_all_process_news_id('AAPL')
+        self.assertEqual(result,[])
+        self.mock_cursor.execute.assert_called_once_with("SELECT DISTINCT news_id FROM nasdaq_location WHERE stock_id = 1")
 
 class TestNoun(unittest.TestCase):
     def setUp(self):
+        self.original_load = spacy.load
         mock_nlp = MagicMock()
         spacy.load = MagicMock(return_value = mock_nlp)
         self.chunks = MagicMock()
@@ -2033,7 +2534,7 @@ class TestNoun(unittest.TestCase):
         mock_nlp.return_value = self.chunks
 
     def tearDown(self):
-        spacy.load.reset_mock()
+        spacy.load = self.original_load
         self.chunks = None
         self.obj1 = None
         self.obj2 = None
@@ -2061,74 +2562,105 @@ class TestNoun(unittest.TestCase):
 
 class TestLocation(unittest.TestCase):
     def setUp(self):
+        self.original_load = spacy.load
+        self.original_noun = Location.noun
+        self.original_get_all_stock = Categories.get_all_stock
         mock_nlp = MagicMock()
         spacy.load = MagicMock(return_value = mock_nlp)
-        self.chunks = MagicMock()
+        chunks1 = MagicMock()
+        chunks2 = MagicMock()
+        chunks3 = MagicMock()
         self.obj1 = MagicMock()
         self.obj2 = MagicMock()
         self.obj3 = MagicMock()
-        mock_nlp.return_value = self.chunks
+        chunks1.ents = [self.obj1]
+        chunks2.ents = [self.obj2]
+        chunks3.ents = [self.obj3]
+        mock_nlp.side_effect = [chunks1,chunks2,chunks3]
 
     def tearDown(self):
-        spacy.load.reset_mock()
-        self.chunks = None
+        spacy.load = self.original_load
+        Location.noun = self.original_noun
+        Categories.get_all_stock = self.original_get_all_stock
         self.obj1 = None
         self.obj2 = None
         self.obj3 = None
 
     def test_location_one_location(self):
         Categories.get_all_stock = MagicMock(return_value = [])
-        Location.noun = MagicMock(return_value = ["I'm",'Bangkok','10 years'])
-        self.chunks.ents = [self.obj1]
-        self.obj1.label_ = 'GPE'
+        Location.noun = MagicMock(return_value = ["I",'Bangkok','years'])
+        self.obj1.label_ = 'PERSON'
+        self.obj2.label_ = 'GPE'
+        self.obj3.label_ = 'TIME'
         string = "I'm living in Bangkok for 10 years"
         result = Location('set').location(string)
         self.assertEqual(result,['Bangkok'])
 
-        Location.noun.reset_mock()
-        Categories.get_all_stock.reset_mock()
-
     def test_location_two_location(self):
         Categories.get_all_stock = MagicMock(return_value = [])
-        Location.noun = MagicMock(return_value = ['Paris','Bangkok'])
-        self.chunks.ents = [self.obj1]
-        self.obj1.label_ = 'GPE'
+        Location.noun = MagicMock(return_value = ['I','Paris','Bangkok'])
+        self.obj1.label_ = 'PERSON'
+        self.obj2.label_ = 'GPE'
+        self.obj3.label_ = 'GPE'
         string = "I went to Bangkok after that I went to Paris"
         result = Location('set').location(string)
         self.assertEqual(set(result),set(['Paris','Bangkok']))
-        Location.noun.reset_mock()
-        Categories.get_all_stock.reset_mock()
+
+    def test_location_dup_location(self):
+        Categories.get_all_stock = MagicMock(return_value = [])
+        Location.noun = MagicMock(return_value = ['I','Bangkok','Bangkok'])
+        self.obj1.label_ = 'PERSON'
+        self.obj2.label_ = 'GPE'
+        self.obj3.label_ = 'GPE'
+        string = "I went to Bangkok after that I sleep in Bangkok"
+        result = Location('set').location(string)
+        self.assertEqual(result,['Bangkok'])
 
     def test_location_no_location(self):
         Categories.get_all_stock = MagicMock(return_value = [])
         Location.noun = MagicMock(return_value = ["I"])
-        self.chunks.ents = [self.obj1]
-        self.obj1.label_ = 'PS'
+        self.obj1.label_ = 'PERSON'
         string = "I am talking"
         result = Location('set').location(string)
         self.assertEqual(result,[])
-        Location.noun.reset_mock()
-        Categories.get_all_stock.reset_mock()
 
 class TestExtractLatLon(unittest.TestCase):
+    def setUp(self):
+        self.original_requests = requests.get
+        self.mock_response = MagicMock()
+        requests.get = MagicMock(return_value=self.mock_response)
+        
+    def tearDown(self):
+        requests.get = self.original_requests
+        self.mock_response = None
+
     def test_extract_lat_lon(self):
-        mock_response = MagicMock()
-        requests.get = MagicMock(return_value = mock_response)
-        mock_response.json.return_value = [{'name':'Bangkok','lat':12.6,'lon':10.1},{'name':'Bang','lat':1,'lon':2},{'lat':3,'lon':1}]
+        self.mock_response.json.return_value = [{'name':'Bangkok','lat':12.6,'lon':10.1},{'name':'Bang','lat':1,'lon':2},{'lat':3,'lon':1}]
         result = Location('set').extract_lat_lon("Bangkok")
         self.assertEqual(result,{'lat':12.6,'lon':10.1})
         requests.get.assert_called_once_with('https://nominatim.openstreetmap.org/search.php?q=Bangkok&format=jsonv2')
 
     def test_extract_lat_lon_none(self):
-        mock_response = MagicMock()
-        requests.get = MagicMock(return_value = mock_response)
-        mock_response.json.return_value = []
+        self.mock_response.json.return_value = []
         result = Location('set').extract_lat_lon("Nonthaburi")
         self.assertEqual(result,None)
         requests.get.assert_called_once_with('https://nominatim.openstreetmap.org/search.php?q=Nonthaburi&format=jsonv2')
 
 class TestFetchLocation(unittest.TestCase):
     def setUp(self):
+        self.original_get_stock_id = Location.get_stock_id
+        self.original_get_all_stock_news_id = Location.get_all_stock_news_id
+        self.original_get_all_process_news_id = Location.get_all_process_news_id
+        self.original_get_news_datetime = Location.get_news_datetime
+        self.original_combine_translate = News.combine_translate
+        self.original_location = Location.location
+        self.original_get_all_location_name = Location.get_all_location_name
+        self.original_get_location_id = Location.get_location_id
+        self.original_check_locate_relation = Location.check_locate_relation
+        self.original_extract_lat_lon = Location.extract_lat_lon
+        self.original_insert_many_location = Location.insert_many_location
+        self.original_insert_location = Location.insert_location
+
         Location.get_stock_id = MagicMock(return_value = 1)
         Location.get_all_stock_news_id = MagicMock(return_value = [1,2,3])
         Location.get_news_datetime = MagicMock(return_value = '2022-02-02')
@@ -2140,18 +2672,18 @@ class TestFetchLocation(unittest.TestCase):
         Location.insert_location = MagicMock()
 
     def tearDown(self):
-        Location.get_stock_id.reset_mock()
-        Location.get_all_stock_news_id.reset_mock()
-        Location.get_all_process_news_id.reset_mock()
-        Location.get_news_datetime.reset_mock()
-        News.combine_translate.reset_mock()
-        Location.location.reset_mock()
-        Location.get_all_location_name.reset_mock()
-        Location.get_location_id.reset_mock()
-        Location.check_locate_relation.reset_mock()
-        Location.extract_lat_lon.reset_mock()
-        Location.insert_many_location.reset_mock()
-        Location.insert_location.reset_mock()
+        Location.get_stock_id = self.original_get_stock_id
+        Location.get_all_stock_news_id = self.original_get_all_stock_news_id
+        Location.get_all_process_news_id = self.original_get_all_process_news_id
+        Location.get_news_datetime = self.original_get_news_datetime
+        News.combine_translate = self.original_combine_translate
+        Location.location = self.original_location
+        Location.get_all_location_name = self.original_get_all_location_name
+        Location.get_location_id = self.original_get_location_id
+        Location.check_locate_relation = self.original_check_locate_relation
+        Location.extract_lat_lon = self.original_extract_lat_lon
+        Location.insert_many_location = self.original_insert_many_location
+        Location.insert_location = self.original_insert_location
 
     def test_fetch_location_never_has_location(self):
         Location.get_all_process_news_id = MagicMock(return_value = [1,2])

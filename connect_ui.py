@@ -1,11 +1,10 @@
 from data.function import Stock,Categories,Location
 import plotly.graph_objects as go
+import plotly.express as px
 import pandas as pd
 import datetime
 import numpy as np
 from scipy import stats
-import threading
-
 
 def convert_interval(data,period):
     if period not in ["W-MON","MS","QS"]:
@@ -52,13 +51,14 @@ def get_close_date(data,frequency):
 
 def candle_plot_1_pic(data,close_day,name,index,plot_interval):
     #Candlestick Chart
-    candle = go.Candlestick(**data.drop(columns=['volume','MA50','MA200']),yaxis = 'y2',name=name)
+    candle = go.Candlestick(**data.drop(columns=['volume','MA50','MA200']),yaxis = 'y2',name=name,
+    increasing_line_color= '#00D50E', decreasing_line_color= '#FF0000')
 
     #Moving Average 50
-    MA50 = go.Scatter(x=data.x, y=data.MA50, line=dict(color='cyan', width=1.5),yaxis = 'y2',name='MA50')
+    MA50 = go.Scatter(x=data.x, y=data.MA50, line=dict(color='#00FFFF', width=1.5),yaxis = 'y2',name='MA50')
 
     #Moving Average 200
-    MA200 = go.Scatter(x=data.x, y=data.MA200, line=dict(color='#E377C2', width=1.5),yaxis = 'y2',name='MA200')
+    MA200 = go.Scatter(x=data.x, y=data.MA200, line=dict(color='#8558FF', width=1.5),yaxis = 'y2',name='MA200')
 
     #Volume
     volume = go.Bar(x=data.x,y=data.volume,marker={ "color": "lightgrey"},yaxis = 'y',name='Volume')
@@ -136,8 +136,12 @@ def candle_plot_1_pic(data,close_day,name,index,plot_interval):
         fig.update_xaxes(rangebreaks=[dict(dvalue = 60*60*1000, values=close_day)])
     elif plot_interval == 'Daily':# If interval is less than 7 day
         fig.update_xaxes(rangebreaks=[dict(values=close_day)])
-    fig.update_layout(hovermode='x',
-                    font = dict(color = "white"))
+    fig.update_layout(hovermode='x unified',
+                    font=dict(
+        family="Noto Sans Thai Light",
+        size=16,
+        color="white"
+    ))
     fig.update_xaxes(showgrid=False)
     fig.update_yaxes(showgrid=False)
     if index == "CRYPTO":
@@ -182,7 +186,7 @@ def plot_candle(stock_symbol,index):
         else:
             stock_price_df = convert_interval(stock_price_df,interval_symbol)# Convert daily data to monyhly or quarterly
         
-        stock_price_df = stock_price_df.tail(200)
+        stock_price_df = stock_price_df.tail(240)
         stock_price_df.reset_index(drop=True, inplace=True)
         if index != "CRYPTO":
             stock_price_df['open'] = stock_price_df['open'].apply(lambda x: "{:.4f}".format(x).rstrip('0').rstrip('.') if x % 1 != 0 else "{:.1f}".format(x))
@@ -193,7 +197,7 @@ def plot_candle(stock_symbol,index):
         pic[round]=candle_plot_1_pic(stock_price_df,close_day,stock_symbol,index,round)
     return pic
 
-def finance_scater_plot_1_pic(name,fs,financials_data):
+def finance_scater_plot_1_pic(name,fs,financials_data,index):
     data = fs.dropna()
     data.reset_index(drop=True, inplace=True)
     x = list(range(len(data[financials_data])))
@@ -202,10 +206,19 @@ def finance_scater_plot_1_pic(name,fs,financials_data):
 
     x_line = np.linspace(min(x), max(x), len(data[financials_data]))
     y_line = slope * x_line + intercept
-    # Create the line object
 
-    data_line = go.Scatter(x=data["quarter"],y=data[financials_data],line=dict(width=2),mode='lines+markers', name=financials_data)
-    regression = go.Scatter(x=data["quarter"], y=y_line, mode='lines', line=dict(width=2),name='Regression Line')
+    if index == "NASDAQ":
+        slope *= -1
+    reg_color = "lightgray"
+    if float(slope) > 0:
+        reg_color = "#00D50E"
+    elif float(slope) < 0:
+        reg_color = "#FF0000"
+    else:
+        reg_color = "lightgray"
+
+    data_line = go.Scatter(x=data["quarter"],y=data[financials_data], line=dict(color='#0050FF', width=2),mode='lines+markers', name=financials_data)
+    regression = go.Scatter(x=data["quarter"], y=y_line, mode='lines', line=dict(color=reg_color, width=2),name='Regression Line')
 
     layout = {
         "yaxis": {
@@ -219,12 +232,11 @@ def finance_scater_plot_1_pic(name,fs,financials_data):
             "orientation": "h"
         }, 
         "margin": {
-            "b": 40, 
-            "l": 40, 
-            "r": 40, 
-            "t": 40
+            "b": 60, 
+            "l": 60, 
+            "r": 60, 
+            "t": 60
         }, 
-        "plot_bgcolor": "rgb(250, 250, 250)",
         'plot_bgcolor': '#1f1f1f',
         'paper_bgcolor': '#1f1f1f'
         }
@@ -233,9 +245,12 @@ def finance_scater_plot_1_pic(name,fs,financials_data):
     
     fig.update_layout(
         title=name+" "+financials_data,
-        hovermode='x',
-        font = dict(color = "white")
-    )
+        hovermode='x unified',
+        font=dict(
+        family="Noto Sans Thai Light",
+        size=16,
+        color="white"
+    ))
     fig.update_xaxes(tickangle=60)
     return (fig,slope)
 
@@ -257,20 +272,23 @@ def finance_bar_plot_1_pic(name,fs,financials_data):
             "r": 40, 
             "t": 40
         }, 
-        "plot_bgcolor": "rgb(250, 250, 250)",
         'plot_bgcolor': '#1f1f1f',
         'paper_bgcolor': '#1f1f1f'
         }
 
-    roa = go.Bar(x=fs["quarter"],y=fs["ROA"],name='ROA%')
-    roe = go.Bar(x=fs["quarter"],y=fs["ROE"],name='ROE%')
+    roa = go.Bar(x=fs["quarter"],y=fs["ROA"],name='ROA%',marker={ "color": "#003CFF"})
+    roe = go.Bar(x=fs["quarter"],y=fs["ROE"],name='ROE%',marker={ "color": "#00C020"})
     fig = go.Figure(data = [roa,roe],layout=layout)
     # Add a title to the plot
     fig.update_layout(
         title=name+" "+"ROA% ROE% by Year",
         hovermode='x',
-        font = dict(color = "white")
-    )
+        font=dict(
+        family="Noto Sans Thai Light",
+        size=16,
+        color="white"
+    ))
+    
     fig.update_xaxes(tickangle=60)
 
     return fig
@@ -285,17 +303,17 @@ def plot_finance(stock_symbol,index):
         return {"No data":go.Figure()}
     elif index == "SET":
         fs = pd.DataFrame(fs).rename(columns={0:'quarter',1:'Total Asset',2:'Liabilities',3:'Equity',4:'Paid Up Capital',5:'Revenue',6:'Net Profit',7:'EPS',8:'ROA',9:'ROE',10:'Net Profit Margin',11:'Market Capitalization',12:'P/E',13:'P/BE',14:'Dividend Yield'})
-        fs.drop(fs.tail(1).index,inplace=True)
+        # fs.drop(fs.tail(1).index,inplace=True)
     elif index == "NASDAQ":
         fs = pd.DataFrame(fs).rename(columns={0:'quarter',1:'Report EPS',2:'Total Asset',3:'Liabilities',4:'Gross Profit',5:'Total Revenue',6:'Net Income'})
     pics = {}
     if index == "SET":
         for topic in ["Total Asset","Net Profit","Liabilities","Dividend Yield","Revenue"]:
-            pics[topic] = finance_scater_plot_1_pic(stock_symbol,fs,topic)
+            pics[topic] = finance_scater_plot_1_pic(stock_symbol,fs,topic,index)
         pics["ROA & ROE"] = finance_bar_plot_1_pic(stock_symbol,fs,["ROA","ROE"]),0
     if index == "NASDAQ":
          for topic in ["Total Asset","Gross Profit","Liabilities","Total Revenue","Net Income","Report EPS"]:
-            pics[topic] = finance_scater_plot_1_pic(stock_symbol,fs,topic)
+            pics[topic] = finance_scater_plot_1_pic(stock_symbol,fs,topic,index)
     return pics
 
 def get_sec_indus(stock_symbol,index):
@@ -309,49 +327,49 @@ def map_value(value, from_low, from_high, to_low, to_high):
         from_high+=1
     return (value - from_low) * (to_high - to_low) / (from_high - from_low) + to_low
 
-def plot_spatial(stock_symbol,index):
-    stock_location = Location(index)
-    data = stock_location.get_stock_location(stock_symbol)
+def plot_spatial(stock_symbol, index):
+    stock_location = Stock(stock_symbol, index)
+    period_key = ["1 Day", "1 Week", "1 Month", "Year to Date", "All"]
+    period = ["1d", "1w", "1m", "y2023", "all"]
+    pics = {}
+    for key, i in zip(period_key, period):
+        data = stock_location.get_stock_location(interval=i)
+        pic = plot_spatial_1_pic(stock_symbol, data, key)
+        pics |= pic
+    if pics == {}:
+        return {"No data": go.Figure()}
+    return pics
+
+def plot_spatial_1_pic(stock_symbol, data, period):
+    
     if data == []:
-        return {"No data":go.Figure()}
-    df = pd.DataFrame(data).drop(columns=0).rename(columns={1:'location_name',2:'lat',3:'lon'})
+        fig = go.Figure(go.Scattermapbox(), layout={
+            'mapbox': {'style': "carto-darkmatter"},
+            'title': {'text': stock_symbol + "'s news location"},
+            'plot_bgcolor': '#1f1f1f',
+            'paper_bgcolor': '#1f1f1f',
+            'font': {'family': "Noto Sans Thai Light", 'size': 16, 'color': "white"},
+        })
+        fig.update_layout(mapbox_center={"lat": 20, "lon": 0}, mapbox_zoom=1.5)
+        return {period: fig}
+    
+    df = pd.DataFrame(data).drop(columns=0).rename(columns={1: 'location_name', 2: 'latitude', 3: 'longitude'})
     location_counts = df['location_name'].value_counts()
     df['frequency'] = df['location_name'].map(location_counts)
-    df['count'] = df['frequency'].apply(map_value, args=(df['frequency'].min(), df['frequency'].max(), 5, 35))
-#    (value - from_low) * (to_high - to_low) / (from_high - from_low) + to_low
-    fig = go.Figure(data=go.Scattergeo(
-                lon = df['lon'],
-                lat = df['lat'],
-                text = df['location_name'],
-                mode = 'markers',
-                name='location',
-                marker = dict(
-                    size = df['count'], # adjust marker size based on count
-                    sizemode = 'diameter',
-                    sizemin = 2,
-                    color = df['frequency'], # map color to count
-                    colorscale = 'Blues_r', # set diverging color scale
-                    reversescale = True,
-                    colorbar_title = 'Count',
-                    colorbar_thickness = 20,
-                    colorbar_len = 0.6
-                ),
-                hovertemplate = '%{text}<br>Frequency: %{marker.color}'
-            ))
+    df['count'] = df['frequency'].apply(map_value, args=(df['frequency'].min(), df['frequency'].max(), 1, 50))
+    fig = px.scatter_mapbox(df, lat="latitude", lon="longitude", color="frequency", size="count", hover_name="location_name",
+                        color_continuous_scale=px.colors.sequential.Blues,
+                        zoom=1.5, center=dict(lat=20, lon=0),
+                        mapbox_style="carto-darkmatter",
+                        hover_data={'count':False, # remove species from hover data
+                             'location_name':False, # customize hover for 
+                            })
 
-    fig.update_layout(
-            title = stock_symbol+"'s news location",
-            geo_scope='world',
-            geo = dict(
-                landcolor='rgb(160, 160, 160)',
-                oceancolor='rgb(51, 51, 51)',
-                showland=True,
-                showocean=True,),
-            plot_bgcolor = '#1f1f1f',
-            paper_bgcolor = '#1f1f1f',
-            font = dict(color = "white")
-        )
-    return {"Spatial":fig}
+    fig.update_layout(  title=stock_symbol + "'s news location",
+                        plot_bgcolor='#1f1f1f',
+                        paper_bgcolor='#1f1f1f',
+                        font=dict(family="Noto Sans Thai Light", size=16, color="white"))
+    return {period: fig}
 
 def get_all_sector(index):
     cat = Categories(index)
@@ -359,6 +377,10 @@ def get_all_sector(index):
 def get_all_industry(index):
     cat = Categories(index)
     return cat.get_all_industry()
+
+def get_top_symbol(index):
+    obj = Categories(index)
+    return obj.get_top_stock()
 
 def get_all_symbol(index):
     obj = Categories(index)
@@ -381,6 +403,44 @@ def get_all_symbol_in_industry(index,industry):
     obj = Categories(index)
     return obj.get_all_stock_in_industrial(industry)
 
-def get_all_news(symbol,index):
+def get_all_news(symbol,index,period):
     obj = Stock(symbol,index)
-    return obj.get_all_news()
+    convert = {'1 Day': '1d', '1 Week': '1w', '1 Month': '1m', 'Year to Date': 'y2023', 'All': 'all'}
+    period = convert[period]
+    return obj.get_all_news(interval = period)
+
+def plot_treemap(all_symbol,index):
+    symbol = []
+    sector = []
+    industry = []
+    market_cap = []
+    
+    for i in all_symbol:
+        obj = Stock(i,index)
+        try:
+            temp_market_cap = obj.financial_statement()[-2][13]
+        except:
+            continue
+        symbol.append(i)
+        sector.append(obj.sector())
+        industry.append(obj.industry())
+        market_cap.append(temp_market_cap)
+    
+    df = pd.DataFrame({
+    'Company': symbol,
+    'Sector': sector,
+    'Industry': industry,
+    'Market Capitalization': market_cap})
+    fig = px.treemap(df, path=['Industry', 'Sector', 'Company'], values='Market Capitalization')
+
+    fig.update_layout(dict(plot_bgcolor = '#1f1f1f',
+        paper_bgcolor= '#1f1f1f'))
+    fig.update_layout(
+    font=dict(
+        family="Noto Sans Thai Light",
+        size=16,
+        color="white"
+    )
+)
+    fig.update_traces(textfont_color='white')
+    return fig

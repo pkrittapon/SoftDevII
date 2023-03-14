@@ -224,10 +224,22 @@ class Stock:
             elif interval == '1d':
                 return f'{self.basetable}_price_day'
 
+    def get_nasdaq_crypto_amount(self):#TestGetNasdaqCryptoAmount
+        if self.basetable == 'stock':
+            return None
+        conn = sqlite3.connect('stock.db')
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT amount FROM {self.basetable} WHERE symbol = '{self.symbol}'")
+        data = cursor.fetchone()
+        conn.close()
+        return data[0]
+
     def get_stock_price(self,**kwargs):#already been test on TestGetStockPrice
         """return the latest price of stock"""
         interval = kwargs.get('interval','1h')
         id = self.get_stock_id()
+        if id == []:
+            return []
         table = self.table(interval)
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -242,6 +254,8 @@ class Stock:
         """return the percent change of the stock price"""
         interval = kwargs.get('interval','1h')
         id = self.get_stock_id()
+        if id == []:
+            return []
         table = self.table(interval)
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -258,6 +272,8 @@ class Stock:
         """return the latest update time of stock"""
         interval = kwargs.get('interval','1h')
         id = self.get_stock_id()
+        if id == []:
+            return []
         table = self.table(interval)
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -272,6 +288,8 @@ class Stock:
         """return the oldest update time of stock"""
         interval = kwargs.get('interval','1h')
         id = self.get_stock_id()
+        if id == []:
+            return []
         table = self.table(interval)
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -286,6 +304,8 @@ class Stock:
         """return all datetime that this stock has price"""
         interval = kwargs.get('interval','1h')
         id = self.get_stock_id()
+        if id == []:
+            return []
         table = self.table(interval)
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -300,6 +320,8 @@ class Stock:
         start = kwargs.get('start',self.oldest_update_time(interval=interval))
         end = kwargs.get('end',self.latest_update_time(interval=interval))
         id = self.get_stock_id()
+        if id == []:
+            return []
         table = self.table(interval)
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -492,7 +514,7 @@ class Stock:
         conn.commit()#commit change to db
         conn.close()#disconnect
 
-    def insert_nasdaq_fin(self,stock_id,finance):
+    def insert_nasdaq_fin(self,stock_id,finance):#already been test on TestInsertFin
         """insert nasdaq financial to database"""
         conn = sqlite3.connect('stock.db',timeout=10)#connect to database
         cursor = conn.cursor()
@@ -510,6 +532,8 @@ class Stock:
         else:
             return "Does not contain financial statement"
         id = self.get_stock_id()
+        if id == []:
+            return []
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
         cursor.execute(f"SELECT quarter FROM {table} WHERE stock_id = {id}")
@@ -549,6 +573,8 @@ class Stock:
         else:
             return "Does not contain financial statement"
         id = self.get_stock_id()
+        if id == []:
+            return []
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
         cursor.execute(f"SELECT * FROM {table} WHERE stock_id = {id}")
@@ -556,36 +582,26 @@ class Stock:
         conn.close()
         return data
 
-    def get_stock_and_crypto_data(self,name,start,interval):
+    def get_stock_and_crypto_data(self,name,start,interval):#TestGetStockAndCryptoData
         """return raw price data of this stock from yahoo finance"""
-        if interval == '1h':
-            interval = '30m'
         if start == None:
-            if interval == "30m":
-                data = yf.download(tickers=name, period='60d', interval = interval)
+            if interval == "1h":
+                data = yf.download(tickers=name, period='120d', interval = interval)
             else:
                 data = yf.download(tickers=name, interval = interval)
         else:
             start = datetime.datetime.strptime(start, '%Y-%m-%d %H:%M:%S')# convert string to datetime obj
             data = yf.download(tickers=name, start=start, interval = interval)
 
-        data = data.loc[data["Volume"] != 0 ].drop(["Adj Close"],axis = 1)
-        new_data_open = data['Open'].resample("H").first()
-        new_data_close = data['Close'].resample("H").last()
-        new_data_high = data['High'].resample("H").max()
-        new_data_low = data['Low'].resample("H").min()
-        new_data_volume = data['Volume'].resample("H").sum()
-        new_data = pd.DataFrame({'Open': new_data_open,
-                                        'High': new_data_high,
-                                        'Low': new_data_low,
-                                        'Close': new_data_close,
-                                        'Volume': new_data_volume}).dropna()
-        new_data["Date"] = new_data.index.strftime('%Y-%m-%d %X') # convert pandas timestamp to string 
-        return new_data.values.tolist() #return value in type list
+        data = data.drop(["Adj Close"],axis = 1)
+        data["Date"] = data.index.strftime('%Y-%m-%d %X') # convert pandas timestamp to string 
+        return data.values.tolist() #return value in type list
 
-    def insert_stock(self,data,interval):#already been test on TestInsertStockPrice
+    def insert_stock_price(self,data,interval):#already been test on TestInsertStockPrice
         """insert price data to specific price table in database"""
         id = self.get_stock_id()
+        if id == []:
+            return []
         date = self.get_all_datetime(interval = interval)
         table = self.table(interval)
         conn = sqlite3.connect('stock.db',timeout=10)#connect to database
@@ -598,14 +614,14 @@ class Stock:
         conn.commit()#commit change to db
         conn.close()#disconnect
 
-    def fetch_stock_price(self,interval):
+    def fetch_stock_price(self,interval):#test on TestFetchStockPrice
         """called function that return raw price data then called insert into database function using raw price data to insert"""
         available_interval = ['1h','1d']
         if not interval in available_interval:
             raise ValueError(f"The interval {interval} is not available. The available interval are {','.join(available_interval)}")
         date = self.latest_update_time(interval=interval)
         try:
-            self.insert_stock(self.get_stock_and_crypto_data(self.symbol+self.price,date,interval),interval)
+            self.insert_stock_price(self.get_stock_and_crypto_data(self.symbol+self.price,date,interval),interval)
         except (AttributeError, TypeError) as e:
             return f"Cannot fetch {self.symbol} price in {interval} interval"
         
@@ -626,6 +642,8 @@ class Stock:
         else:
             return []
         stock_id = self.get_stock_id()
+        if stock_id == []:
+            return []
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
         cursor.execute(f"SELECT a.news_id,a.title,a.[datetime],a.link,a.content FROM {self.news_table} AS a INNER JOIN {self.relation_table} AS b ON a.news_id = b.news_id WHERE b.{self.type}_id = {stock_id} AND a.[datetime] >= '{interval}' ORDER BY a.[datetime] DESC")
@@ -650,6 +668,8 @@ class Stock:
         else:
             return []
         stock_id = self.get_stock_id()
+        if stock_id == []:
+            return []
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
         cursor.execute(f"SELECT c.[datetime],a.location_name, a.lat, a.lon FROM location AS a INNER JOIN {self.location_table} AS b ON a.location_id = b.location_id INNER JOIN {self.news_table} AS c ON b.news_id = c.news_id WHERE b.{self.type}_id = {stock_id} AND c.[datetime] >= '{interval}' ORDER BY c.[datetime] DESC")
@@ -686,38 +706,21 @@ class News:
         else:
             raise ValueError('wrong index')
 
-
-    # def set_get_all_tags(self,symbol,page):
-    #     latest = f'https://www.kaohoon.com/tag/{symbol}/page/{page}'
-    #     response = requests.get(latest)
-    #     if response.status_code == 200:
-    #         data = BeautifulSoup(response.text,"html.parser")
-    #         news = data.find_all(attrs={"class": "post-item"})
-    #         return news
-    #     return []
-    def set_get_all_tags(self,symbol,page):
+    def set_get_all_tags(self,symbol,page):#test on TestGetAllTag
         """return all tags that contain news from website"""
         # attrs={"class": "s-grid -m1 -d1"}
         latest = f'https://www.infoquest.co.th/tag/{symbol}/page/{page}'
         response = requests.get(latest)
         if response.status_code == 200:
             data = BeautifulSoup(response.text,"html.parser")
-            news = data.find('main').find_all(attrs={"class": "info"})
+            news = data.find('main')
+            if news == None:
+                return []
+            news = news.find_all(attrs={"class": "info"})
             return news
         return []
 
-
-    # def set_title_link_time(self,tag):
-    #     # .replace('\n','').replace('“',"").replace('”','')
-    #     result = []
-    #     for data in tag:
-    #         time_tag = data.find(attrs={"class": "date meta-item tie-icon"})
-    #         title_tag = data.find(attrs={"class": "post-title"})
-    #         title = title_tag.find('a')
-    #         date = time_tag.text.split('/')
-    #         result.append({'title':title.text,'datetime':f"{date[2]}-{date[1]}-{date[0]} 00:00:00",'link':title["href"]})
-    #     return result
-    def set_title_link_time(self,tag):
+    def set_title_link_time(self,tag):#test on TestGetTitleLink
         # .replace('\n','').replace('“',"").replace('”','')
         """return list of dict that contain title,datetime and link of content from tags"""
         result = []
@@ -731,24 +734,7 @@ class News:
             result.append({'title':title.text,'datetime':date,'link':title["href"]})
         return result
     
-
-    # def set_content(self,link):
-    #     # "itemprop": "articleBody"
-    #     text = ''
-    #     response = requests.get(link)
-    #     if response.status_code == 200:
-    #         data = BeautifulSoup(response.text,"html.parser")
-    #         try:
-    #             news = data.find(attrs={"class": "entry-content entry clearfix"}).find_all('p')
-    #         except AttributeError:
-    #             return 'null'
-    #         for i in news:
-    #             text = text+i.text+'\n'
-    #         if text == '':
-    #             return 'null'
-    #         return text
-    #     return 'null'
-    def set_content(self,link):
+    def set_content(self,link):#TestContent
         # "itemprop": "articleBody"
         """return content text from content link"""
         text = ''
@@ -766,8 +752,7 @@ class News:
             return text
         return 'null'
 
-
-    def set_news_dict(self,li,symbol):
+    def set_news_dict(self,li,symbol):#TestNewDict
         """return list of dict that contain symbol of stock, title, datetime, link, content"""
         dict_list = []
         for news in li:
@@ -779,7 +764,7 @@ class News:
         return dict_list
 ################################################################
 
-    def nasdaq_get_all_tags(self,symbol):#test
+    def nasdaq_get_all_tags(self,symbol):#TestGetAllTag
         """return all tags that contain news from website"""
         latest = f'https://finance.yahoo.com/quote/{symbol.upper()}{self.extend}'
         response = requests.get(latest)
@@ -789,7 +774,7 @@ class News:
             return tags
         return []
 
-    def nasdaq_title_link(self,tag):#test
+    def nasdaq_title_link(self,tag):#TestGetTitleLink
         """return list of dict that contain title and link of content from tags"""
         result = []
         for i in tag:
@@ -800,7 +785,7 @@ class News:
             result.append({'title':title.text,'link':link})
         return result
 
-    def nasdaq_content_time(self,link):#test
+    def nasdaq_content_time(self,link):#TestContent
         """return dict of content text and datetime from content link"""
         content_dict = {}
         content_text = ""
@@ -825,7 +810,7 @@ class News:
         content_dict['datetime'] = "null"
         return content_dict
 
-    def nasdaq_news_dict(self,li,symbol):#test
+    def nasdaq_news_dict(self,li,symbol):#TestNewDict
         """return list of dict that contain symbol of stock, title, datetime, link, content"""
         dict_list = []
         for news in li:
@@ -836,10 +821,9 @@ class News:
             if news['datetime'] != 'null' and news['content'] != 'null':
                 dict_list.append(news)
         return dict_list
-
-
 ##################################################################
-    def insert_news(self,news):#test
+
+    def insert_news(self,news):#TestInsertNews
         """insert news into database"""
         conn = sqlite3.connect('stock.db',timeout=10)#connect to database
         cursor = conn.cursor()
@@ -847,7 +831,7 @@ class News:
         conn.commit()
         conn.close()
 
-    def get_stock_id(self,symbol):#test
+    def get_stock_id(self,symbol):#TestGetStockID
         """return id of stock"""   
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -858,7 +842,7 @@ class News:
             return data[0][0]
         return None
 
-    def get_news_id(self,title):#test
+    def get_news_id(self,title):#TestGetNewsID
         """return id of news"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -869,7 +853,7 @@ class News:
             return data[0][0]
         return None
 
-    def check_relation(self,stock_id,news_id):#test
+    def check_relation(self,stock_id,news_id):#TestCheckRelation
         """check if this news already related to this stock"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -881,7 +865,7 @@ class News:
             news = [i[0] for i in data]
         return news_id in news
 
-    def get_all_title(self):#test
+    def get_all_title(self):#TestGetAllTitle
         """return all news title"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -892,7 +876,7 @@ class News:
             return [i[0] for i in data]
         return []
     
-    def get_title_content(self,news_id):#test
+    def get_title_content(self,news_id):#TestGetTitleContent
         """return title and content of this news"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -903,7 +887,7 @@ class News:
             return data[0]
         return []
 
-    def insert_many_news(self,news_id,stock_id):#test
+    def insert_many_news(self,news_id,stock_id):#TestInsertManyNews
         """insert which news related to which stock"""
         conn = sqlite3.connect('stock.db',timeout=10)#connect to database
         cursor = conn.cursor()
@@ -911,7 +895,7 @@ class News:
         conn.commit()
         conn.close()
 
-    def insert_check_data(self,news):#test
+    def insert_check_data(self,news):#TestInsertCheckData
         """before insert check if database already had this news using title"""
         all_title = self.get_all_title()
         stock_id = self.get_stock_id(news['stock'])
@@ -925,10 +909,12 @@ class News:
             self.insert_many_news(news_id,stock_id)
         print('-----------------100%------------------------')
 
-    def fetch_set_news(self,symbol):
+    def fetch_set_news(self,symbol):#TestFetchSpecificNews
         """get set news and insert to database"""
         page = 1
         tag = self.set_get_all_tags(symbol,page)
+        if len(tag) == 0:
+            return None
         # while(len(tag) != 0 and page < 3):
         dict_list = self.set_title_link_time(tag)
         result = self.set_news_dict(dict_list,symbol)
@@ -938,7 +924,7 @@ class News:
             # page += 1
             # tag = self.set_get_all_tags(symbol,page)
 
-    def fetch_nasdaq_news(self,symbol):#test
+    def fetch_nasdaq_news(self,symbol):#TestFetchSpecificNews
         """get nasdaq,crypto news and insert to database"""
         tag = self.nasdaq_get_all_tags(symbol)
         if len(tag) == 0:
@@ -948,20 +934,20 @@ class News:
         for i in result:
             self.insert_check_data(i)
     
-    def fetch_news(self,symbol):#test
+    def fetch_news(self,symbol):#TestFetchNews
         """(main func)select what should be get(set news or nasdaq and crypto news)"""
         if self.index == 'SET':
             self.fetch_set_news(symbol)
         elif self.index == 'NASDAQ' or self.index == 'CRYPTO':
             self.fetch_nasdaq_news(symbol)       
     
-    def detect(self,text):#test
+    def detect(self,text):#TestDetect
         """detect if this text is English or not"""
         translator = Translator()
         obj = translator.detect(text)
         return obj.lang == 'en'
 
-    def translate_text(self,text):#test
+    def translate_text(self,text):#TestTranslateText
         """translate text into English"""
         if not self.detect(text):
             translator = Translator()
@@ -970,7 +956,7 @@ class News:
             return translated
         return text.replace('"'," ").replace("'",' ').replace('(',' ').replace(')',' ')
 
-    def translate_paragraph(self,paragraph):#test
+    def translate_paragraph(self,paragraph):#TestTranslateParagraph
         """translate paragraph into english"""
         if not self.detect(paragraph[0:25]):
             array = paragraph.split('\n')
@@ -980,7 +966,7 @@ class News:
             return translated
         return paragraph.replace('"'," ").replace("'",' ').replace('(',' ').replace(')',' ')
     
-    def combine_translate(self,news_id):#test
+    def combine_translate(self,news_id):#TestCombineTranslate
         """translate both paragraph and title from news then combine it into one text"""
         news = self.get_title_content(news_id)
         title = self.translate_text(news[0])
@@ -1016,7 +1002,7 @@ class Location:
         else:
             raise ValueError('wrong index')
     
-    def get_stock_id(self,symbol):#test
+    def get_stock_id(self,symbol):#TestGetStockID
         """return id of stock"""   
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -1027,7 +1013,7 @@ class Location:
             return data[0][0]
         return None
 
-    def get_news_id(self,title):#test
+    def get_news_id(self,title):#TestGetNewsID
         """return news id"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -1038,7 +1024,7 @@ class Location:
             return data[0][0]
         return None
     
-    def get_location_id(self,name):#test
+    def get_location_id(self,name):#TestGetLocationID
         """return location id"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -1049,7 +1035,7 @@ class Location:
             return data[0][0]
         return None
 
-    def get_lo_latest_datetime(self,stock_id):#test
+    def get_lo_latest_datetime(self,stock_id):#TestGetLocationLatestDatetime
         """return location latest datetime(for fetch new location)"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -1060,7 +1046,7 @@ class Location:
             return data[0][0]
         return None
     
-    def get_news_datetime(self,news_id):#test
+    def get_news_datetime(self,news_id):#TestGetNewsDatetime
         """return datetime of news"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -1071,7 +1057,7 @@ class Location:
             return data[0][0]
         return None
     
-    def get_all_location_name(self):#test
+    def get_all_location_name(self):#TestGetAllLocationName
         """return all location name"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -1082,7 +1068,7 @@ class Location:
             return [i[0] for i in data]
         return []
     
-    def check_locate_relation(self,location_id,news_id,stock_id):#test
+    def check_locate_relation(self,location_id,news_id,stock_id):#TestCheckLocateRelation
         """check if there already had location on this news in this stock"""
         conn = sqlite3.connect('stock.db',timeout=10)
         cursor = conn.cursor()
@@ -1094,7 +1080,7 @@ class Location:
             location = [i[0] for i in data]
         return location_id in location
 
-    def insert_location(self,name,lat_lon):#test
+    def insert_location(self,name,lat_lon):#TestInsertLocation
         """insert new location into database"""
         conn = sqlite3.connect('stock.db',timeout=10)#connect to database
         cursor = conn.cursor()
@@ -1102,7 +1088,7 @@ class Location:
         conn.commit()
         conn.close()
 
-    def insert_many_location(self,stock_id,news_id,location_id):#test
+    def insert_many_location(self,stock_id,news_id,location_id):#TestInsertManyLocation
         """insert relation between news,location and stock into database"""
         conn = sqlite3.connect('stock.db',timeout=10)#connect to database
         cursor = conn.cursor()
@@ -1110,7 +1096,7 @@ class Location:
         conn.commit()
         conn.close()
     
-    def get_all_stock_news_id(self,symbol):#test
+    def get_all_stock_news_id(self,symbol):#TestGetAllStockNewsID
         """return all news_id that relate to this stock"""
         stock_id = self.get_stock_id(symbol)
         latest = self.get_lo_latest_datetime(stock_id)
@@ -1124,7 +1110,7 @@ class Location:
         conn.close()
         return [i[0] for i in data]
 
-    def get_all_process_news_id(self,symbol):#test
+    def get_all_process_news_id(self,symbol):#TestGetAllProcessNewsID
         """return news_id that already processed"""
         stock_id = self.get_stock_id(symbol)
         conn = sqlite3.connect('stock.db',timeout=10)
@@ -1134,7 +1120,7 @@ class Location:
         conn.close()
         return [i[0] for i in data]
 
-    def noun(self,text):#test
+    def noun(self,text):#TestNoun
         """return group of noun in this text"""
         cleantext = text.replace('"','').replace("'","")
         doc = self.nlp(cleantext)
@@ -1143,7 +1129,7 @@ class Location:
             group.append(i.text)
         return group
                 
-    def location(self,text):#test
+    def location(self,text):#TestLocation
         """return possible location name on this text"""
         noun = self.noun(text)
         stock = Categories(self.index).get_all_stock()
@@ -1161,18 +1147,7 @@ class Location:
         possible_location = list(set(possible_location))
         return possible_location
 
-    # def location_downgrade(self,text): #faster but can't find some location
-    #     possible_location = []
-    #     remove_list = ['\\','/','$',"%",'"',',','&']
-    #     doc = self.nlp(text)
-    #     for ent in doc.ents:
-    #         if ent.label_ == "GPE":
-    #             if all(char not in remove_list for char in text) and not any(char.isdigit() for char in text):
-    #                 possible_location.append(ent.text)
-    #     possible_location = list(set(possible_location))
-    #     return possible_location        
-
-    def extract_lat_lon(self,location):#test
+    def extract_lat_lon(self,location):#TestExtractLatLon
         """return latitude and longitude from location name"""
         response = requests.get(f'https://nominatim.openstreetmap.org/search.php?q={location}&format=jsonv2')
         data = response.json()
@@ -1180,7 +1155,7 @@ class Location:
             return {'lat':data[0]['lat'],'lon':data[0]['lon']}
         return None
     
-    def fetch_location(self,symbol):#test
+    def fetch_location(self,symbol):#TestFetchLocation
         """fetch location in this stock from news and insert into database"""
         # count = 0
         stock_id = self.get_stock_id(symbol)

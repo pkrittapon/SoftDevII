@@ -1,13 +1,16 @@
 import sys
-from connect_ui import plot_candle , plot_finance ,get_sec_indus,plot_spatial,get_all_symbol,get_all_sector,get_all_industry,get_all_statement,get_all_symbol_in_sector,get_all_symbol_in_industry,get_all_news
+from connect_ui import plot_candle , plot_finance , get_sec_indus, plot_spatial, get_all_symbol, get_all_sector, get_all_industry, get_all_statement, get_all_symbol_in_sector, get_all_symbol_in_industry, get_all_news, get_top_symbol, plot_treemap
 from data.function import Categories,Stock,News,Location
 from PyQt5.QtCore import Qt,QThread
 from PyQt5 import QtWidgets, QtCore 
 from PyQt5.QtWidgets import QMainWindow, QApplication,QPushButton,QTableWidgetItem,QHeaderView,QAbstractScrollArea,QSizePolicy
 import plotly.graph_objects as go
-from random import randint
 from ui_component import Ui_MainWindow
 import time
+import threading
+import plotly.express as px
+import pandas as pd
+
 
 class MyThread_stock(QThread):
     finished = QtCore.pyqtSignal()
@@ -97,6 +100,7 @@ class MyThread_download(QThread):
     ready = QtCore.pyqtSignal()
     finished =  QtCore.pyqtSignal()
     error = QtCore.pyqtSignal(list)
+
     def __init__(self, symbol,index):
         super().__init__()
         self.symbol = symbol
@@ -144,17 +148,20 @@ class MyThread_crypto(QThread):
         
     @QtCore.pyqtSlot()
     def search_crypto(self):
-        all_symbol_crypto = get_all_symbol("CRYPTO")
+        all_symbol_crypto = get_top_symbol("CRYPTO")
         filtered_data = []
         processed_count = 0
         for sym in all_symbol_crypto:
             crypto_obj = Stock(sym,"CRYPTO")
             price = crypto_obj.get_stock_price(interval = '1d')
             change = crypto_obj.get_percent_change(interval = '1d')
+            if change == [] :
+                continue
+            change = float('{:.5f}'.format(round(change, 5)).rstrip('0').rstrip('.') or '0')
             if price == [] or change == []:
                 continue
             else:
-                filtered_data.append(dict(symbol = sym ,price = price,change=change,name=""))
+                filtered_data.append(dict(symbol = sym ,Price = price,Change=change,name=""))
             
             processed_count += 1
             if processed_count % 5 == 0:
@@ -165,16 +172,109 @@ class MyThread_crypto(QThread):
         self.result_ready.emit(filtered_data)
         self.finished.emit()
 
+class MyThread_treemap(QThread):
+    treemap_ready = QtCore.pyqtSignal(object)
+    finished = QtCore.pyqtSignal()
+    def __init__(self, all_symbol, index):
+        super().__init__()
+        self.all_symbol = all_symbol
+        self.index = index
+
+    @QtCore.pyqtSlot()
+    def tree(self):
+        global symbol, sector, industry, market_cap
+        symbol = []
+        sector = []
+        industry = []
+        market_cap = []
+
+        # Define the number of threads to use
+        num_threads = 4
+
+        # Split the symbols into batches for each thread
+        batch_size = len(self.all_symbol) // num_threads
+        batches = [(i * batch_size, (i + 1) * batch_size, self.index) for i in range(num_threads)]
+        batches[-1] = (batches[-1][0], len(self.all_symbol), self.index)
+        
+        # Create the threads and start processing the batches
+        threads = [threading.Thread(target=self.process_symbols_batch, args=batch) for batch in batches]
+        for thread in threads:
+            thread.start()
+
+        # Wait for all threads to finish
+        for thread in threads:
+            thread.join()
+
+        
+        if self.index == "CRYPTO":
+            df = pd.DataFrame({
+            'Coin': symbol,
+            'Sector': sector,
+            'Industry': industry,
+            'Market Capitalization': market_cap})
+            fig = px.treemap(df, path = ['Coin'],values='Market Capitalization')
+        else:
+            df = pd.DataFrame({
+            'Company': symbol,
+            'Sector': sector,
+            'Industry': industry,
+            'Market Capitalization': market_cap})
+            fig = px.treemap(df, path=['Industry', 'Sector', 'Company'], values='Market Capitalization')
+
+        fig.update_layout(dict(plot_bgcolor = '#1f1f1f',
+            paper_bgcolor= '#1f1f1f'))
+        fig.update_layout(
+        font=dict(
+            family="Noto Sans Thai Light",
+            size=16,
+            color="white"
+        )
+    )
+        fig.update_traces(textfont_color='white')
+        # Emit the signal with the resulting treemap
+        self.treemap_ready.emit(fig)
+        self.finished.emit()
+
+    def process_symbol(self,i, index):
+        obj = Stock(i, index)
+        if index == "SET":
+            try:
+                temp_market_cap = obj.financial_statement()[-2][13]
+            except:
+                return None
+        elif index == "NASDAQ" or index == "CRYPTO":
+            try:
+                amount = obj.get_nasdaq_crypto_amount()
+                last_price = obj.get_stock_price()
+                temp_market_cap = amount * last_price
+            except:
+                return None
+        sector = obj.sector()
+        industry = obj.industry()
+        return (i, sector, industry, temp_market_cap)
+
+    # Define a function to process a batch of symbols
+    def process_symbols_batch(self,start_index, end_index, index):
+        for i in range(start_index, end_index):
+            result = self.process_symbol(self.all_symbol[i], index)
+            if result is not None:
+                symbol.append(result[0])
+                sector.append(result[1])
+                industry.append(result[2])
+                market_cap.append(result[3])
+        
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
-        self.last_watch_page = None
-        self.last_index = None
-        self.current_data = None
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-        
+
+        self.last_watch_page = None
+        self.last_index = None
+        self.last_market_page = None
+
+        self.current_data = None
         self.progress2 = 0    
         self.finish2 = 0
 
@@ -197,13 +297,19 @@ class MainWindow(QMainWindow):
         self.ui.fig4.setHtml(start_pic.to_html(include_plotlyjs='cdn'))
         self.ui.fig5.setHtml(start_pic.to_html(include_plotlyjs='cdn'))
         self.ui.fig6.setHtml(start_pic.to_html(include_plotlyjs='cdn'))
+        self.ui.fig7.setHtml(start_pic.to_html(include_plotlyjs='cdn'))
+        self.ui.fig8.setHtml(start_pic.to_html(include_plotlyjs='cdn'))
+        self.ui.fig9.setHtml(start_pic.to_html(include_plotlyjs='cdn'))
 
         self.ui.fig.setZoomFactor(0.9)
         self.ui.fig2.setZoomFactor(0.7)
-        self.ui.fig3.setZoomFactor(0.7)
-        self.ui.fig4.setZoomFactor(1.1)
-        self.ui.fig5.setZoomFactor(1.1)
-        self.ui.fig6.setZoomFactor(1.1)
+        self.ui.fig3.setZoomFactor(0.6)
+        self.ui.fig4.setZoomFactor(1)
+        self.ui.fig5.setZoomFactor(1)
+        self.ui.fig6.setZoomFactor(1)
+        self.ui.fig7.setZoomFactor(1)
+        self.ui.fig8.setZoomFactor(1)
+        self.ui.fig9.setZoomFactor(1)
 
         Set = Categories('SET')
         Nasdaq = Categories('NASDAQ')
@@ -260,7 +366,14 @@ class MainWindow(QMainWindow):
         self.ui.statements_comboBox_2.setCurrentIndex(-1)
         self.ui.statements_comboBox_2.currentIndexChanged.connect(self.change_finance)
 
-        #load item to dropdown
+        self.ui.news_comboBox.setCurrentIndex(-1)
+        self.ui.news_comboBox_2.setCurrentIndex(-1)
+        self.ui.news_comboBox_3.setCurrentIndex(-1)
+        self.ui.news_comboBox.currentIndexChanged.connect(self.change_period)
+        self.ui.news_comboBox_2.currentIndexChanged.connect(self.change_period)
+        self.ui.news_comboBox_3.currentIndexChanged.connect(self.change_period)
+
+        # #load item to dropdown
         self.load_all_sector_indus("SET")
         self.load_filter("SET")
         self.load_all_sector_indus("NASDAQ")
@@ -271,6 +384,7 @@ class MainWindow(QMainWindow):
         self.ui.min_SpinBox_nasdaq.setMaximum(9999999999999)
         self.ui.max_SpinBox_nasdaq.setMaximum(9999999999999)
 
+        self.ui.pushButton.clicked.connect(lambda : self.click_market())
         self.ui.set_button.clicked.connect(lambda : self.click_set())
         self.ui.nasdaq_button.clicked.connect(lambda : self.click_nasdaq())
         self.ui.crypto_button.clicked.connect(lambda : self.click_crypto())
@@ -289,16 +403,22 @@ class MainWindow(QMainWindow):
         self.ui.crypto_tableWidget.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
         self.ui.crypto_tableWidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        #-------------watch search crypto------------------------------
+        # #-------------watch search crypto------------------------------
         self.ui.search_button_crypto.clicked.connect(self.search_crypto_buff)
         self.ui.sort_comboBox_crypto2.currentIndexChanged.connect(lambda: self.show_crypto(self.last_crypto_data))
 
-        #-------------watch search set------------------------------
+        # #-------------watch search set------------------------------
         self.ui.search_button_set.clicked.connect(self.search_stock_buff_set)
         self.ui.sort_comboBox_set1.currentIndexChanged.connect(lambda: self.show_stock_set(self.last_stock_filtered_data_set))
         self.ui.sort_comboBox_set2.currentIndexChanged.connect(lambda: self.show_stock_set(self.last_stock_filtered_data_set))
+        
+        ##------------------------treemap---------------------------
+        self.ui.search_button_set_2.clicked.connect(self.plot_treemap_set)
+        self.ui.search_button_nasdaq_2.clicked.connect(self.plot_treemap_nasdaq)
+        self.ui.search_button_crypto_2.clicked.connect(self.plot_treemap_crypto)
 
-        #-------------watch search nasdaq------------------------------
+
+        # #-------------watch search nasdaq------------------------------
         self.ui.search_button_nasdaq.clicked.connect(self.search_stock_buff_nasdaq)
         self.ui.sort_comboBox_nasdaq1.currentIndexChanged.connect(lambda: self.show_stock_nasdaq(self.last_stock_filtered_data_nasdaq))
         self.ui.sort_comboBox_nasdaq2.currentIndexChanged.connect(lambda: self.show_stock_nasdaq(self.last_stock_filtered_data_nasdaq))
@@ -313,9 +433,11 @@ class MainWindow(QMainWindow):
         self.ui.back_button.setVisible(False)
 
 
-        # filter set
+        # # filter set
         self.ui.industry_comboBox_set.currentIndexChanged.connect(lambda: self.choose_sec_indus_only_one_set("indus"))
         self.ui.sector_comboBox_set.currentIndexChanged.connect(lambda: self.choose_sec_indus_only_one_set("sec"))
+        self.ui.industry_comboBox_set_2.currentIndexChanged.connect(lambda: self.choose_sec_indus_only_one_set_2("indus"))
+        self.ui.sector_comboBox_set_2.currentIndexChanged.connect(lambda: self.choose_sec_indus_only_one_set_2("sec"))
         self.ui.filter_tableWidget_set.setColumnCount(4)
         self.ui.filter_tableWidget_set.setRowCount(0)
         self.ui.filter_tableWidget_set.setHorizontalHeaderLabels(["Filter", "Minimum value", "Maximum value", "Remove"])
@@ -324,9 +446,11 @@ class MainWindow(QMainWindow):
         self.ui.filter_tableWidget_set.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
         self.ui.filter_tableWidget_set.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # filter nasdaq
+        # # filter nasdaq
         self.ui.industry_comboBox_nasdaq.currentIndexChanged.connect(lambda: self.choose_sec_indus_only_one_nasdaq("indus"))
         self.ui.sector_comboBox_nasdaq.currentIndexChanged.connect(lambda: self.choose_sec_indus_only_one_nasdaq("sec"))
+        self.ui.industry_comboBox_nasdaq_2.currentIndexChanged.connect(lambda: self.choose_sec_indus_only_one_nasdaq_2("indus"))
+        self.ui.sector_comboBox_nasdaq_2.currentIndexChanged.connect(lambda: self.choose_sec_indus_only_one_nasdaq_2("sec"))
         self.ui.filter_tableWidget_nasdaq.setColumnCount(4)
         self.ui.filter_tableWidget_nasdaq.setRowCount(0)
         self.ui.filter_tableWidget_nasdaq.setHorizontalHeaderLabels(["Filter", "Minimum value", "Maximum value", "Remove"])
@@ -335,17 +459,17 @@ class MainWindow(QMainWindow):
         self.ui.filter_tableWidget_nasdaq.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
         self.ui.filter_tableWidget_nasdaq.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        #stock set
+        # #stock set
         self.ui.symbol_tableWidget_set.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.ui.symbol_tableWidget_set.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
         self.ui.symbol_tableWidget_set.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
-        # #stock nasdaq
+        # # #stock nasdaq
         self.ui.symbol_tableWidget_nasdaq.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.ui.symbol_tableWidget_nasdaq.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
         self.ui.symbol_tableWidget_nasdaq.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  
 
-        # download all
+        # # download all
         self.ui.tableWidget.setColumnCount(3)
         self.ui.tableWidget.setRowCount(0)
         self.ui.tableWidget.setHorizontalHeaderLabels(["Symbol", "Index", "Remove"])
@@ -357,7 +481,7 @@ class MainWindow(QMainWindow):
         self.ui.progressBar.setValue(0)
         self.ui.progressBar_2.setValue(0)
         self.ui.update_button.clicked.connect(self.download)
-        self.ui.stackedWidget.setCurrentIndex(3)
+        self.ui.stackedWidget.setCurrentIndex(6)
         self.ui.stackedWidget_3.setCurrentIndex(0)
         
         self.filter_inputs_set = []
@@ -365,7 +489,7 @@ class MainWindow(QMainWindow):
         self.symbol_list = []
 
 
-#------------------------------------Watch Filter-------------------------------------------------------------
+# #------------------------------------Watch Filter-------------------------------------------------------------
     def add_filter_set(self):
         # Get input values and create FilterInput object
         filter_name = self.ui.filter_conboBox_set.currentText()
@@ -436,9 +560,14 @@ class MainWindow(QMainWindow):
         if index == "SET":
             self.ui.sector_comboBox_set.addItems(sorted(get_all_sector(index)))
             self.ui.industry_comboBox_set.addItems(sorted(get_all_industry(index)))
+            self.ui.sector_comboBox_set_2.addItems(sorted(get_all_sector(index)))
+            self.ui.industry_comboBox_set_2.addItems(sorted(get_all_industry(index)))
         else:
             self.ui.sector_comboBox_nasdaq.addItems(sorted(get_all_sector(index)))
             self.ui.industry_comboBox_nasdaq.addItems(sorted(get_all_industry(index)))
+            self.ui.sector_comboBox_nasdaq_2.addItems(sorted(get_all_sector(index)))
+            self.ui.industry_comboBox_nasdaq_2.addItems(sorted(get_all_industry(index)))
+
     def load_filter(self,index):#load to dropdown
         data = get_all_statement(index)
         if index == "SET":
@@ -455,6 +584,15 @@ class MainWindow(QMainWindow):
             self.ui.industry_comboBox_set.setCurrentIndex(-1)
         elif what == "indus" and self.ui.industry_comboBox_set.currentIndex() != -1:
             self.ui.sector_comboBox_set.setCurrentIndex(-1)
+
+    def choose_sec_indus_only_one_set_2(self,what):
+        if self.ui.sector_comboBox_set_2.currentIndex() == 0 and self.ui.industry_comboBox_set_2.currentIndex() == 0:
+            pass
+        elif what == "sec" and self.ui.sector_comboBox_set_2.currentIndex() != -1:
+            self.ui.industry_comboBox_set_2.setCurrentIndex(-1)
+        elif what == "indus" and self.ui.industry_comboBox_set_2.currentIndex() != -1:
+            self.ui.sector_comboBox_set_2.setCurrentIndex(-1)
+            
     def choose_sec_indus_only_one_nasdaq(self,what):
         if self.ui.sector_comboBox_nasdaq.currentIndex() == 0 and self.ui.industry_comboBox_nasdaq.currentIndex() == 0:
             pass
@@ -462,9 +600,94 @@ class MainWindow(QMainWindow):
             self.ui.industry_comboBox_nasdaq.setCurrentIndex(-1)
         elif what == "indus" and self.ui.industry_comboBox_nasdaq.currentIndex() != -1:
             self.ui.sector_comboBox_nasdaq.setCurrentIndex(-1)
+
+    def choose_sec_indus_only_one_nasdaq_2(self,what):
+        if self.ui.sector_comboBox_nasdaq_2.currentIndex() == 0 and self.ui.industry_comboBox_nasdaq_2.currentIndex() == 0:
+            pass
+        elif what == "sec" and self.ui.sector_comboBox_nasdaq_2.currentIndex() != -1:
+            self.ui.industry_comboBox_nasdaq_2.setCurrentIndex(-1)
+        elif what == "indus" and self.ui.industry_comboBox_nasdaq_2.currentIndex() != -1:
+            self.ui.sector_comboBox_nasdaq_2.setCurrentIndex(-1)
     
-#------------------------------------- Watch Stock-------------------------------------------------------------
-    #-----------set--------------
+#------------------------------------------Tree Map-----------------------------------------------------------------
+    def plot_treemap_set(self):
+        input_industry = self.ui.industry_comboBox_set_2.currentText()
+        input_sector = self.ui.sector_comboBox_set_2.currentText()
+        if input_industry == "All Industry" or input_sector == "All Sector":# get all , no filter sector and indus
+            index = "SET"
+            self.all_symbol = get_top_symbol("SET")
+        elif input_industry != "":# get only stock in industry
+            index = "SET"
+            self.all_symbol = get_all_symbol_in_industry("SET",input_industry)
+        else:# get only stock in sector
+            index = "SET"
+            self.all_symbol = get_all_symbol_in_sector("SET",input_sector)
+
+        self.treemap = plot_treemap(self.all_symbol,index)
+        self.ui.fig7.setHtml(self.treemap.to_html(include_plotlyjs='cdn'))
+
+    def plot_treemap_nasdaq(self):
+        input_industry = self.ui.industry_comboBox_nasdaq_2.currentText()
+        input_sector = self.ui.sector_comboBox_nasdaq_2.currentText()
+        if input_industry == "All Industry" or input_sector == "All Sector":# get all , no filter sector and indus
+            index = "NASDAQ"
+            all_symbol = get_top_symbol("NASDAQ")
+        elif input_industry != "":# get only stock in industry
+            index = "NASDAQ"
+            all_symbol = get_all_symbol_in_industry("NASDAQ",input_industry)
+        else:# get only stock in sector
+            index = "NASDAQ"
+            all_symbol = get_all_symbol_in_sector("NASDAQ",input_sector)
+
+        self.thread_nasdaq = MyThread_treemap(all_symbol, index)
+        self.thread_nasdaq_thread = QThread()
+        self.thread_nasdaq.moveToThread(self.thread_nasdaq_thread)
+        self.thread_nasdaq.finished.connect(self.thread_nasdaq_thread.quit) # added
+        self.thread_nasdaq.finished.connect(self.thread_nasdaq.deleteLater) # added
+        self.thread_nasdaq.treemap_ready.connect(self.show_treemap_nasdaq)
+        self.thread_nasdaq_thread.started.connect(self.start_worker_treemap_nasdaq) # moved
+        self.thread_nasdaq_thread.start()
+        self.thread_nasdaq.finished.connect(self.thread_nasdaq_thread.quit)
+        self.thread_nasdaq.finished.connect(self.thread_nasdaq_thread.wait)
+
+    def start_worker_treemap_nasdaq(self):
+        self.ui.search_button_nasdaq_2.setEnabled(False)
+        self.ui.search_button_crypto_2.setEnabled(False)
+        QtCore.QMetaObject.invokeMethod(self.thread_nasdaq, 'tree', QtCore.Qt.QueuedConnection) 
+
+    def show_treemap_nasdaq(self, treemap):
+        self.ui.search_button_nasdaq_2.setEnabled(True)
+        self.ui.search_button_crypto_2.setEnabled(True)
+        self.ui.fig8.setHtml(treemap.to_html(include_plotlyjs='cdn'))
+
+    def plot_treemap_crypto(self):
+        index = "CRYPTO"
+        all_symbol = get_top_symbol("CRYPTO")
+
+        self.thread_crypto = MyThread_treemap(all_symbol, index)
+        self.thread_crypto_thread = QThread()
+        self.thread_crypto.moveToThread(self.thread_crypto_thread)
+        self.thread_crypto.finished.connect(self.thread_crypto_thread.quit) # added
+        self.thread_crypto.finished.connect(self.thread_crypto.deleteLater) # added
+        self.thread_crypto.treemap_ready.connect(self.show_treemap_crypto)
+        self.thread_crypto_thread.started.connect(self.start_worker_treemap_crypto) # moved
+        self.thread_crypto_thread.start()
+        self.thread_crypto.finished.connect(self.thread_crypto_thread.quit)
+        self.thread_crypto.finished.connect(self.thread_crypto_thread.wait)
+
+    def start_worker_treemap_crypto(self):
+        self.ui.search_button_nasdaq_2.setEnabled(False)
+        self.ui.search_button_crypto_2.setEnabled(False)
+        QtCore.QMetaObject.invokeMethod(self.thread_crypto, 'tree', QtCore.Qt.QueuedConnection) 
+
+    def show_treemap_crypto(self, treemap):
+        self.ui.search_button_nasdaq_2.setEnabled(True)
+        self.ui.search_button_crypto_2.setEnabled(True)
+        self.ui.fig9.setHtml(treemap.to_html(include_plotlyjs='cdn'))
+    
+
+# #------------------------------------- Watch Stock-------------------------------------------------------------
+#     #-----------set--------------
     def search_stock_buff_set(self):
         self.ui.search_button_set.setEnabled(False)
         input_industry = self.ui.industry_comboBox_set.currentText()
@@ -478,9 +701,9 @@ class MainWindow(QMainWindow):
                     row_data.append(item.text())
             filter_topics.append(row_data)
             
-        if input_industry == "All Industry" or input_sector == "All Industry":# get all , no filter sector and indus
+        if input_industry == "All Industry" or input_sector == "All Sector":# get all , no filter sector and indus
             index = "SET"
-            all_symbol = get_all_symbol("SET")
+            all_symbol = get_top_symbol("SET")
         elif input_industry != "":# get only stock in industry
             index = "SET"
             all_symbol = get_all_symbol_in_industry("SET",input_industry)
@@ -533,7 +756,7 @@ class MainWindow(QMainWindow):
         remaining_keys = sorted_data[0].keys() - first_keys - exclude_keys - last_keys
 
         # Convert the unique_keys set into a list in the desired order
-        column_order = list(first_keys) + sorted(list(remaining_keys)) + list(last_keys)
+        column_order = ['Symbol', 'Price'] + list(remaining_keys) + list(last_keys)
 
         # Set the column count for your table
         self.ui.symbol_tableWidget_set.reset()
@@ -561,6 +784,7 @@ class MainWindow(QMainWindow):
         self.ui.search_button_set.setEnabled(True)
         self.ui.symbol_tableWidget_set.resizeColumnsToContents()
         self.ui.symbol_tableWidget_set.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+    
     #-----------nasdaq-----------
     def search_stock_buff_nasdaq(self):
         self.ui.search_button_nasdaq.setEnabled(False)
@@ -575,9 +799,9 @@ class MainWindow(QMainWindow):
                     row_data.append(item.text())
             filter_topics.append(row_data)
             
-        if input_industry == "All Industry" or input_sector == "All Industry":# get all , no filter sector and indus
+        if input_industry == "All Industry" or input_sector == "All Sector":# get all , no filter sector and indus
             index = "NASDAQ"
-            all_symbol = get_all_symbol("NASDAQ")
+            all_symbol = get_top_symbol("NASDAQ")
         elif input_industry != "":# get only stock in industry
             index = "NASDAQ"
             all_symbol = get_all_symbol_in_industry("NASDAQ",input_industry)
@@ -631,7 +855,7 @@ class MainWindow(QMainWindow):
         remaining_keys = sorted_data[0].keys() - first_keys - exclude_keys - last_keys
 
         # Convert the unique_keys set into a list in the desired order
-        column_order = list(first_keys) + sorted(list(remaining_keys)) + list(last_keys)
+        column_order = ['Symbol', 'Price'] + sorted(list(remaining_keys)) + list(last_keys)
 
         # Set the column count for your table
         self.ui.symbol_tableWidget_nasdaq.reset()
@@ -660,8 +884,11 @@ class MainWindow(QMainWindow):
         self.ui.symbol_tableWidget_nasdaq.resizeColumnsToContents()
         self.ui.symbol_tableWidget_nasdaq.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         
-# -----------------------------------Crypto Watch---------------------------------------------------------------
+# # -----------------------------------Crypto Watch---------------------------------------------------------------
     def search_crypto_buff(self):
+        self.ui.sort_comboBox_crypto1.clear()
+        self.ui.sort_comboBox_crypto1.addItem("Sort by Price")
+        self.ui.sort_comboBox_crypto1.addItem("Sort by Change")
         self.worker_thread_cryp = QThread()
         self.worker_cryp = MyThread_crypto()
         self.worker_cryp.moveToThread(self.worker_thread_cryp)
@@ -684,25 +911,28 @@ class MainWindow(QMainWindow):
     def show_crypto(self,data):
         if self.last_crypto_data == None:
             return
+        
+        sort_topic = self.ui.sort_comboBox_crypto1.currentText()[8:]
+        sort_order = self.ui.sort_comboBox_crypto2.currentIndex()
 
-        sort_order = self.ui.sort_comboBox_crypto1.currentIndex()
-       
+        if sort_topic == '':
+            sort_topic = "Price"
         if sort_order == 0:
-            sorted_data = sorted(data, key=lambda x: x['price'])
+            sorted_data = sorted(data, key=lambda x: x[sort_topic])
         else:
-            sorted_data = sorted(data, key=lambda x: x['price'], reverse=True)
+            sorted_data = sorted(data, key=lambda x: x[sort_topic], reverse=True)
         
         self.ui.crypto_tableWidget.setRowCount(len(sorted_data))
         for i, stock in enumerate(sorted_data):
             symbol_item = QTableWidgetItem(stock['symbol'])
             symbol_item.setToolTip(stock['name'])
-            price_item = QTableWidgetItem(str(stock['price']))
-            change_item = QTableWidgetItem(str(stock['change'])+"%")
+            price_item = QTableWidgetItem(str(stock['Price']))
+            change_item = QTableWidgetItem(str(stock['Change'])+"%")
             # change_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-            if stock['change'] > 0:
+            if stock['Change'] > 0:
                 change_item.setForeground(Qt.green)
-            elif stock['change'] < 0:
+            elif stock['Change'] < 0:
                 change_item.setForeground(Qt.red)
             else:
                 change_item.setForeground(Qt.black)
@@ -716,7 +946,7 @@ class MainWindow(QMainWindow):
 
         self.ui.search_button_crypto.setEnabled(True)
         
-#--------------------------------------------News----------------------------------------------
+# #--------------------------------------------News----------------------------------------------
     def add_news_item(self, title, timestamp, content):
         # Create a new news item
         item = NewsItem(title, timestamp, content)
@@ -731,6 +961,7 @@ class MainWindow(QMainWindow):
         self.ui.news_content.setHtml(item.content)
         self.ui.news_content.setVisible(True)
         self.ui.news_list.setVisible(False)
+        self.ui.news_comboBox.setVisible(False)
         self.ui.back_button.setVisible(True)
         self.ui.news_label.setText(item.title)
         self.ui.news_content.setGeometry(self.contentsRect())
@@ -739,48 +970,79 @@ class MainWindow(QMainWindow):
         # Hide the content of the selected news item and show the list view
         self.ui.news_content.setVisible(False)
         self.ui.news_list.setVisible(True)
+        self.ui.news_comboBox.setVisible(True)
         self.ui.back_button.setVisible(False)
         self.ui.news_label.setText("News")
 
 #----------------------------------------click change page----------------------------------------------
+    def click_market(self):
+        if self.last_market_page == None:
+            self.last_market_page = 0
+            self.ui.set_button.setChecked(True)
+        if self.last_market_page == 0:
+            self.ui.set_button.setChecked(True)
+        elif self.last_market_page == 1:
+            self.ui.nasdaq_button.setChecked(True)
+        elif self.last_market_page == 2:
+            self.ui.crypto_button.setChecked(True)
+        self.ui.stackedWidget.setCurrentIndex(self.last_market_page)
+        self.ui.stackedWidget_3.setCurrentIndex(1)
     def click_watch(self):  
         if self.last_watch_page == None:
-            self.last_watch_page = 0
+            self.last_watch_page = 3
             self.ui.set_button.setChecked(True)
+        if self.last_watch_page == 3:
+            self.ui.set_button.setChecked(True)
+        elif self.last_watch_page == 4:
+            self.ui.nasdaq_button.setChecked(True)
+        elif self.last_watch_page == 5:
+            self.ui.crypto_button.setChecked(True)
         self.ui.stackedWidget.setCurrentIndex(self.last_watch_page)
         self.ui.stackedWidget_3.setCurrentIndex(1)
     def click_set(self):
-        self.last_watch_page = 0
-        self.ui.stackedWidget.setCurrentIndex(0)
+        if self.ui.button_watch_page.isChecked():
+            self.last_watch_page = 3
+            self.ui.stackedWidget.setCurrentIndex(3)
+        if self.ui.pushButton.isChecked():
+            self.last_market_page = 0
+            self.ui.stackedWidget.setCurrentIndex(0)
         self.ui.stackedWidget_3.setCurrentIndex(1)
     def click_nasdaq(self):
-        self.last_watch_page = 1
-        self.ui.stackedWidget.setCurrentIndex(1)
+        if self.ui.button_watch_page.isChecked():
+            self.last_watch_page = 4
+            self.ui.stackedWidget.setCurrentIndex(4)
+        if self.ui.pushButton.isChecked():
+            self.last_market_page = 1
+            self.ui.stackedWidget.setCurrentIndex(1)
         self.ui.stackedWidget_3.setCurrentIndex(1)
     def click_crypto(self):
-        self.last_watch_page = 2
-        self.ui.stackedWidget.setCurrentIndex(2)
+        if self.ui.button_watch_page.isChecked():
+            self.last_watch_page = 5
+            self.ui.stackedWidget.setCurrentIndex(5)
+        if self.ui.pushButton.isChecked():
+            self.last_market_page = 2
+            self.ui.stackedWidget.setCurrentIndex(2)
         self.ui.stackedWidget_3.setCurrentIndex(1)
     def click_overall(self):
-        self.ui.stackedWidget.setCurrentIndex(3)
-        self.ui.stackedWidget_3.setCurrentIndex(0)
-    def click_stock(self):
-        self.ui.stackedWidget.setCurrentIndex(4)
-        self.ui.stackedWidget_3.setCurrentIndex(0)
-    def click_financial(self):
-        self.ui.stackedWidget.setCurrentIndex(5)
-        self.ui.stackedWidget_3.setCurrentIndex(0)
-    def click_news(self):
         self.ui.stackedWidget.setCurrentIndex(6)
         self.ui.stackedWidget_3.setCurrentIndex(0)
-    def click_spatial(self):
+    def click_stock(self):
         self.ui.stackedWidget.setCurrentIndex(7)
         self.ui.stackedWidget_3.setCurrentIndex(0)
-    def click_update(self):
+    def click_financial(self):
         self.ui.stackedWidget.setCurrentIndex(8)
         self.ui.stackedWidget_3.setCurrentIndex(0)
-    def click_update_all(self):
+    def click_news(self):
         self.ui.stackedWidget.setCurrentIndex(9)
+        self.ui.stackedWidget_3.setCurrentIndex(0)
+    def click_spatial(self):
+        self.ui.stackedWidget.setCurrentIndex(10)
+        self.ui.stackedWidget_3.setCurrentIndex(0)
+    def click_update(self):
+        self.ui.stackedWidget.setCurrentIndex(11)
+        self.ui.stackedWidget_3.setCurrentIndex(0)
+    def click_update_all(self):
+        self.ui.stackedWidget.setCurrentIndex(12)
         self.ui.stackedWidget_3.setCurrentIndex(2)
 
 #------------------------------------------download update---------------------------------------------------
@@ -793,8 +1055,13 @@ class MainWindow(QMainWindow):
         news_state = self.ui.checkBox_news.isChecked()
         location_state = self.ui.checkBox_location.isChecked()
         self.load_number = 0
+        if news_state and location_state:
+            self.load_number += 1
+            round = 3
+        else:
+            round = 4
         if self.current_data != None:
-            for i in range(4):  
+            for i in range(round):  
                 if i == 0 and price_state:
                     #load history price
                     self.load_number += 1
@@ -803,7 +1070,7 @@ class MainWindow(QMainWindow):
                     self.worker.moveToThread(self.worker_thread)
                     self.worker.finished.connect(self.worker_thread.quit) # added
                     self.worker.finished.connect(self.worker.deleteLater) # added
-                    self.worker.finished.connect(lambda :self.update_data("price"))
+                    self.worker.finished.connect(lambda :self.update_data("price",False))
                     self.worker_thread.started.connect(self.start_worker_download_price) # moved
                     self.worker_thread.start()
                     self.worker.finished.connect(self.worker_thread.quit)
@@ -816,7 +1083,7 @@ class MainWindow(QMainWindow):
                     self.worker_statement.moveToThread(self.worker_thread_statement)
                     self.worker_statement.finished.connect(self.worker_thread_statement.quit) # added
                     self.worker_statement.finished.connect(self.worker_statement.deleteLater) # added
-                    self.worker_statement.finished.connect(lambda :self.update_data("statement"))
+                    self.worker_statement.finished.connect(lambda :self.update_data("statement",False))
                     self.worker_thread_statement.started.connect(self.start_worker_download_statement) # moved
                     self.worker_thread_statement.start()
                     self.worker_statement.finished.connect(self.worker_thread_statement.quit)
@@ -828,7 +1095,7 @@ class MainWindow(QMainWindow):
                     self.worker_news.moveToThread(self.worker_thread_news)
                     self.worker_thread_news.finished.connect(self.worker_thread_news.quit) # added
                     self.worker_thread_news.finished.connect(self.worker_news.deleteLater) # added
-                    self.worker_news.finished.connect(lambda :self.update_data("news"))
+                    self.worker_news.finished.connect(lambda :self.update_data("news",location_state))
                     self.worker_thread_news.started.connect(self.start_worker_download_news) # moved
                     self.worker_thread_news.start()
                     self.worker_news.finished.connect(self.worker_thread_news.quit)
@@ -840,7 +1107,7 @@ class MainWindow(QMainWindow):
                     self.worker_location.moveToThread(self.worker_thread_location)
                     self.worker_location.finished.connect(self.worker_thread_location.quit) # added
                     self.worker_location.finished.connect(self.worker_location.deleteLater) # added
-                    self.worker_location.finished.connect(lambda :self.update_data("location"))
+                    self.worker_location.finished.connect(lambda :self.update_data("location",False))
                     self.worker_thread_location.started.connect(self.start_worker_download_location) # moved
                     self.worker_thread_location.start()
                     self.worker_location.finished.connect(self.worker_thread_location.quit)
@@ -862,8 +1129,24 @@ class MainWindow(QMainWindow):
         self.ui.update_button.setEnabled(False)
         QtCore.QMetaObject.invokeMethod(self.worker_location, 'update_data_location', QtCore.Qt.QueuedConnection)
 
-    def update_data(self,who):
+    def start_worker_download_location2(self):
+        self.ui.update_button.setEnabled(False)
+        QtCore.QMetaObject.invokeMethod(self.worker_location2, 'update_data_location', QtCore.Qt.QueuedConnection)
+    
+    def update_data(self,who,state):
         part = 100/self.load_number
+        if state :
+            self.worker_thread_location2 = QThread()
+            self.worker_location2 = MyThread_download([self.current_data[0]],[self.current_data[1]])
+            self.worker_location2.moveToThread(self.worker_thread_location2)
+            self.worker_location2.finished.connect(self.worker_thread_location2.quit) # added
+            self.worker_location2.finished.connect(self.worker_location2.deleteLater) # added
+            self.worker_location2.finished.connect(lambda :self.update_data("location",False))
+            self.worker_thread_location2.started.connect(self.start_worker_download_location2) # moved
+            self.worker_thread_location2.start()
+            self.worker_location2.finished.connect(self.worker_thread_location2.quit)
+            self.worker_location2.finished.connect(self.worker_thread_location2.wait)
+            
         if who == "price":
             self.progress += part
             self.ui.progressBar.setValue(int(self.progress))
@@ -906,7 +1189,7 @@ class MainWindow(QMainWindow):
             self.finish += 1
             self.news_items.clear()
             self.news_model.layoutChanged.emit()
-            all_news = get_all_news(self.current_data[0],self.current_data[1])
+            all_news = get_all_news(self.current_data[0],self.current_data[1],"All")
             for each_news in all_news:
                 self.add_news_item(each_news[1], each_news[2], each_news[4])
         elif who == "location":
@@ -914,6 +1197,12 @@ class MainWindow(QMainWindow):
             self.ui.progressBar.setValue(int(self.progress))
             self.finish += 1
             self.pic_spatial = plot_spatial(self.current_data[0],self.current_data[1])
+            self.ui.fig3.setHtml(self.pic_spatial["All"].to_html(include_plotlyjs='cdn'))
+            self.ui.fig6.setHtml(self.pic_spatial["All"].to_html(include_plotlyjs='cdn'))
+            self.ui.news_comboBox.setCurrentIndex(4)
+            self.ui.news_comboBox_2.setCurrentIndex(4)
+            self.ui.news_comboBox_3.setCurrentIndex(4)
+
         
         if self.finish == self.load_number:
             self.finish = 0
@@ -930,13 +1219,12 @@ class MainWindow(QMainWindow):
                 self.ui.fig3.setHtml(plane_fig.to_html(include_plotlyjs='cdn'))
                 self.ui.fig6.setHtml(plane_fig.to_html(include_plotlyjs='cdn'))
             else:
-                s_pic = self.pic_spatial['Spatial']
                 # self.ui.fig3.setHtml(s_pic.to_html(include_plotlyjs='cdn'))
-                self.ui.fig6.setHtml(s_pic.to_html(include_plotlyjs='cdn'))
-                self.ui.fig3.setHtml(s_pic.to_html(include_plotlyjs='cdn'))
+                self.ui.fig6.setHtml(self.pic_spatial["All"].to_html(include_plotlyjs='cdn'))
+                self.ui.fig3.setHtml(self.pic_spatial["All"].to_html(include_plotlyjs='cdn'))
         
 
-#-----------------------------------------update all------------------------------------------------------------
+# #-----------------------------------------update all------------------------------------------------------------
 
     def add_symbol(self):
         if self.inputable == True:
@@ -1023,11 +1311,12 @@ class MainWindow(QMainWindow):
                 continue
             if category == "CRYPTO" and crypto_state == True:
                 continue
-            
+
+            if category == "CRYPTO":
+                symbol = symbol[:-4]
             all_symbol.append(symbol)
             all_index.append(category)
 
-        print(len(all_symbol),len(all_index))
         self.number_symbol_download = len(all_symbol)
         self.worker_update_all_thread = QThread()
         self.worker_update_all = MyThread_download(all_symbol,all_index)
@@ -1074,11 +1363,7 @@ class MainWindow(QMainWindow):
             self.inputable = True
 
 
-
-
-
-
-#-----------------------------------------change graph---------------------------------------------------------
+# #-----------------------------------------change graph---------------------------------------------------------
     def change_finance(self,index):
         key = list(self.pic_finance.keys())[index]
 
@@ -1099,6 +1384,23 @@ class MainWindow(QMainWindow):
         self.ui.freq_comboBox.setCurrentIndex(index)
         self.ui.freq_comboBox_2.setCurrentIndex(index)
 
+    def change_period(self,index):
+        key = list(self.pic_spatial.keys())[index]
+
+        self.ui.fig3.setHtml(self.pic_spatial[key].to_html(include_plotlyjs='cdn'))
+        self.ui.fig6.setHtml(self.pic_spatial[key].to_html(include_plotlyjs='cdn'))
+
+        self.ui.news_comboBox.setCurrentIndex(index)
+        self.ui.news_comboBox_2.setCurrentIndex(index)
+        self.ui.news_comboBox_3.setCurrentIndex(index)
+
+        self.news_items.clear()
+        self.news_model.layoutChanged.emit()
+
+        all_news = get_all_news(self.current_data[0],self.current_data[1],key)
+        for each_news in all_news:
+            self.add_news_item(each_news[1], each_news[2], each_news[4])
+      
     def change_stock_graph(self,index):
         if index != -1 and index != self.last_index:
 
@@ -1117,10 +1419,7 @@ class MainWindow(QMainWindow):
                 word = item_text[0]
             name = Stock(word,item_text[-1]).get_stock_name()
                 
-            all_news = get_all_news(word,stock_index)
-            for each_news in all_news:
-                self.add_news_item(each_news[1], each_news[2], each_news[4])
-
+            
             self.current_data = word,stock_index
             self.pic_candle = plot_candle(word,stock_index)
             self.pic_finance = plot_finance(word,stock_index)
@@ -1138,10 +1437,21 @@ class MainWindow(QMainWindow):
             self.ui.statements_comboBox.addItems(finance_topic)
             self.ui.statements_comboBox_2.addItems(finance_topic)
 
+            period_list = list(self.pic_spatial.keys())
+            self.ui.news_comboBox.clear()
+            self.ui.news_comboBox_2.clear()
+            self.ui.news_comboBox_3.clear()
+            self.ui.news_comboBox.addItems(period_list)
+            self.ui.news_comboBox_2.addItems(period_list)
+            self.ui.news_comboBox_3.addItems(period_list)
+
             self.ui.freq_comboBox.setCurrentIndex(0)
             self.ui.freq_comboBox_2.setCurrentIndex(0)
             self.ui.statements_comboBox.setCurrentIndex(0)
             self.ui.statements_comboBox_2.setCurrentIndex(0)
+            self.ui.news_comboBox.setCurrentIndex(4)
+            self.ui.news_comboBox_2.setCurrentIndex(4)
+            self.ui.news_comboBox_3.setCurrentIndex(4)
             sector,industry = get_sec_indus(word,stock_index)
             
             self.ui.Main_Symbol_Label.setText(word)
@@ -1150,7 +1460,9 @@ class MainWindow(QMainWindow):
             self.ui.industry_name.setText(industry)
             self.ui.index_name.setText(stock_index)
             
-
+            all_news = get_all_news(word,stock_index,"All")
+            for each_news in all_news:
+                self.add_news_item(each_news[1], each_news[2], each_news[4])
 
             if list(self.pic_candle.keys())[0] == "No data":
                 plane_fig = go.Figure(layout=dict(plot_bgcolor = '#1f1f1f',
@@ -1174,17 +1486,6 @@ class MainWindow(QMainWindow):
                 self.ui.fig2.setHtml(plane_fig.to_html(include_plotlyjs='cdn'))
                 self.ui.fig5.setHtml(plane_fig.to_html(include_plotlyjs='cdn'))
 
-            if list(self.pic_spatial.keys())[0] == "No data":
-                plane_fig = go.Figure(layout=dict(plot_bgcolor = '#1f1f1f',
-                    paper_bgcolor = '#1f1f1f',
-                    font = dict(color = "white")))
-                self.ui.fig3.setHtml(plane_fig.to_html(include_plotlyjs='cdn'))
-                self.ui.fig6.setHtml(plane_fig.to_html(include_plotlyjs='cdn'))
-            else:
-                s_pic = self.pic_spatial['Spatial']
-                # self.ui.fig3.setHtml(s_pic.to_html(include_plotlyjs='cdn'))
-                self.ui.fig6.setHtml(s_pic.to_html(include_plotlyjs='cdn'))
-                self.ui.fig3.setHtml(s_pic.to_html(include_plotlyjs='cdn'))
 
 
             self.ui.progressBar.setValue(0)
@@ -1222,6 +1523,8 @@ class SymbolInput:
     def __init__(self, symbol_name, index_name):
         self.symbol_name = symbol_name
         self.index_name = index_name
+
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)    
 
@@ -1229,11 +1532,9 @@ if __name__ == "__main__":
 
     with open('style.qss', 'r') as f:
         style = f.read()
-    
-    # apply the style to the application
     app.setStyleSheet(style)
+   
     window.show()
     sys.exit(app.exec())
-
 
 

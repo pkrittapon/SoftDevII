@@ -32,27 +32,38 @@ QComboBox {
     color: #f2f2f2;
     background-color: #2f2f2f;
     border: 1px solid #404040;
+    padding-left: 5px;
     selection-background-color: #dedede;
     selection-color: #1f1f1f;
+    border-radius: 10px
 }
 QComboBox:hover {
     background-color: #5f5f5f;
+    border-radius: 10px
 }
+
 QComboBox::drop-down {
     subcontrol-origin: padding;
     subcontrol-position: top right;
     background-color: #5f5f5f;
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
 }
-/* type combobox */
-/* QComboBox QAbstractItemView QLineEdit {
-  border: 1px solid gray;
-  padding: 2px;
-} */
+
+QComboBox QListView {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    background-color: #5f5f5f;
+    border-radius: 10px
+}
 
 QComboBox QAbstractItemView {
     color: #f2f2f2;
     background-color: #474747;
     selection-background-color: #404040;
+    border-bottom-right-radius: 10px;
+    border-bottom-left-radius: 10px;
+    
 }
 
 QComboBox QAbstractItemView::drop-down:focus {
@@ -115,10 +126,12 @@ QListView:item{
     background-color: #2f2f2f;
     color: #f2f2f2;
     border: #515151;
+    border-radius: 10px
 }
 QListView::item::hover{
     background-color: #3f3f3f;
     color: #f2f2f2;
+    border-radius: 10px
 }
 
 QTextBrowser{
@@ -129,11 +142,20 @@ QTextBrowser{
 
 QDoubleSpinBox{
     color: #f2f2f2;
-    background-color: #3f3f3f;
+    background-color: #2f2f2f;
     border: 1px solid #404040;
     selection-background-color: #dedede;
     selection-color: #1f1f1f;
+    border-radius: 10px
 }
+
+QDoubleSpinBox:hover{
+    color: #f2f2f2;
+    background-color: #5f5f5f;
+    border: 1px solid #404040;
+    border-radius: 10px
+}
+
 
 QTableView  {
     background-color: #1f1f1f ; /* secondary color */
