@@ -670,6 +670,46 @@ class TestGetAllStockInSector(unittest.TestCase):
         result = obj.get_all_stock_in_sector('FOOD')
         self.assertEqual(result,[])
 
+class TestInsertNewStock(unittest.TestCase):
+    def setUp(self):
+        self.original_get_all_stock = Categories.get_all_stock
+        self.original_get_stock_and_crypto_data = Categories.get_stock_and_crypto_data
+        self.original_insert_stock = Categories.insert_stock
+    
+    def tearDown(self):
+        Categories.get_all_stock = self.original_get_all_stock
+        Categories.get_stock_and_crypto_data = self.original_get_stock_and_crypto_data
+        Categories.insert_stock = self.original_insert_stock
+
+    def test_have_stock_in_db(self):
+        Categories.get_all_stock = MagicMock(return_value = ['PTT','AOT'])
+        Categories.get_stock_and_crypto_data = MagicMock()
+        Categories.insert_stock = MagicMock()
+        result = Categories('SET').insert_new_stock('PTT')
+        self.assertEqual(result,'have')
+        Categories.get_all_stock.assert_called_once()
+        Categories.get_stock_and_crypto_data.assert_not_called()
+        Categories.insert_stock.assert_not_called()
+
+    def test_do_not_have_stock_in_db_and_no_stock_in_market(self):
+        Categories.get_all_stock = MagicMock(return_value = ['PTT','AOT'])
+        Categories.get_stock_and_crypto_data = MagicMock(return_value = None)
+        Categories.insert_stock = MagicMock()
+        result = Categories('SET').insert_new_stock('ABCD')
+        self.assertEqual(result,'fail')
+        Categories.get_all_stock.assert_called_once()
+        Categories.get_stock_and_crypto_data.assert_called_once()
+        Categories.insert_stock.assert_not_called()
+
+    def test_new_stock(self):
+        Categories.get_all_stock = MagicMock(return_value = ['PTT','AOT'])
+        Categories.get_stock_and_crypto_data = MagicMock(return_value = [20,20,20,20])
+        Categories.insert_stock = MagicMock()
+        result = Categories('SET').insert_new_stock('SCG')
+        self.assertEqual(result,'pass')
+        Categories.get_all_stock.assert_called_once()
+        Categories.get_stock_and_crypto_data.assert_called_once()
+        Categories.insert_stock.assert_called_once()
 
 
 
@@ -1493,6 +1533,15 @@ class TestGetStockAndCryptoData(unittest.TestCase):
             result = Stock('PTT','SET').get_stock_and_crypto_data("TESTTEST",'2022-02-02 00:00:00','1h')
             assert result == [[50.0,50.25,48.0,49.75,24543,'2022-12-25 09:30:00'],[52.0, 52.0, 49.0, 52.0, 67854, '2022-12-26 10:30:00'],[48.0, 49.0, 47.0, 48.5, 16875,'2022-12-27 15:30:00']]
 
+    def test_pull_none(self):
+        yfinance_mock = MagicMock()
+        data = {}
+        data_date = pd.DataFrame(data)
+        yfinance_mock.download.return_value = data_date
+        with patch('yfinance.download',yfinance_mock.download):
+            result = Stock('PTT','SET').get_stock_and_crypto_data("TESTTEST",'2022-02-02 00:00:00','1h')
+            assert result == None
+
 class TestInsertStockPrice(unittest.TestCase):
     def setUp(self):
         self.stock = [('EE',)]
@@ -1612,6 +1661,16 @@ class TestFetchStockPrice(unittest.TestCase):
         Stock.latest_update_time.assert_called_once_with(interval='1h')
         Stock.get_stock_and_crypto_data.assert_called_once_with('EE.bk','2022-02-02','1h')
         Stock.insert_stock_price.assert_called_once()
+
+    def test_fetch_None_data(self):
+        Stock.get_stock_and_crypto_data.return_value = None
+        stock = Stock('EE','SET')
+        result = stock.fetch_stock_price('1h')
+        self.assertEqual(result,'fail')
+
+        Stock.latest_update_time.assert_called_once_with(interval='1h')
+        Stock.get_stock_and_crypto_data.assert_called_once_with('EE.bk','2022-02-02','1h')
+        Stock.insert_stock_price.assert_not_called()
 
     def test_fetch_error(self):
         stock = Stock('EE','SET')
@@ -2420,7 +2479,7 @@ class TestCheckLocateRelation(unittest.TestCase):
         self.mock_cursor.execute.assert_called_once_with("SELECT location_id FROM nasdaq_location WHERE news_id = 2 and stock_id = 3")
 
     def test_check_locate_relation_no_relation(self):
-        self.mock_cursor.fetchall.return_value = [(4,),(5,)]
+        self.mock_cursor.fetchall.return_value = [(2,),(3,)]
         location = Location('NASDAQ')
         result = location.check_locate_relation(1,2,3)
         self.assertEqual(result,False)
@@ -2721,7 +2780,7 @@ class TestFetchLocation(unittest.TestCase):
     def test_fetch_location_processed_all_news(self):
         Location.get_all_process_news_id = MagicMock(return_value = [1,2,3])
         Location.get_all_location_name = MagicMock(return_value = ['Bangkok'])
-        Location.check_locate_relation = MagicMock(return_value = True)
+        Location.check_locate_relation = MagicMock()
 
         location = Location('NASDAQ')
         location.fetch_location('AAPL')

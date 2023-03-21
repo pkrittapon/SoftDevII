@@ -18,14 +18,17 @@ class Categories:
             self.toptable = 'set100'
             self.basetable = 'stock'
             self.type = 'stock'
+            self.price = '.bk'
         if index == 'NASDAQ':
             self.toptable = 'nasdaq200'
             self.basetable = 'stock_nasdaq'
             self.type = 'stock'
+            self.price = ''
         if index == 'CRYPTO':
             self.toptable = 'crypto100'
             self.basetable = 'crypto'
             self.type = 'crypto'
+            self.price = '-USD'
 
     def get_index_id(self):#already been test on TestGetIndexID
         """return index id"""    
@@ -151,6 +154,32 @@ class Categories:
         conn.close()
         return [i[0] for i in data]
 
+    def get_stock_and_crypto_data(self,name,start,interval):#TestGetStockAndCryptoData
+        """return raw price data of this stock from yahoo finance"""
+        if start == None:
+            if interval == "1h":
+                data = yf.download(tickers=name, period='120d', interval = interval)
+            else:
+                data = yf.download(tickers=name, interval = interval)
+        else:
+            start = datetime.datetime.strptime(start, '%Y-%m-%d %H:%M:%S')# convert string to datetime obj
+            data = yf.download(tickers=name, start=start, interval = interval)
+        try:
+            data = data.drop(["Adj Close"],axis = 1)
+            data["Date"] = data.index.strftime('%Y-%m-%d %X') # convert pandas timestamp to string 
+            return data.values.tolist() #return value in type list
+        except:
+            return None
+    
+    def insert_new_stock(self,symbol):#TestInsertNewStock
+        """insert and check new stock"""
+        if symbol in self.get_all_stock():
+            return 'have'
+        if self.get_stock_and_crypto_data(symbol+self.price,None,'1h') == None:
+            return 'fail'
+        self.insert_stock(symbol)
+        return 'pass'
+        
 
 
 class Stock:
@@ -366,26 +395,27 @@ class Stock:
         r_earning = requests.get(url_earning)
         r_balance_sheet = requests.get(url_balance_sheet)
         r_income_statement = requests.get(url_income_statement)
-        
+        try:
+            data_earning = r_earning.json()
+            data_balance_sheet = r_balance_sheet.json()
+            data_income_statement = r_income_statement.json()
 
-        data_earning = r_earning.json()
-        data_balance_sheet = r_balance_sheet.json()
-        data_income_statement = r_income_statement.json()
+            df_earning = pd.DataFrame(data_earning["quarterlyEarnings"])
+            df_earning = df_earning[['fiscalDateEnding','reportedEPS']].drop(index=0).reset_index(drop=True).head(20)
 
-        df_earning = pd.DataFrame(data_earning["quarterlyEarnings"])
-        df_earning = df_earning[['fiscalDateEnding','reportedEPS']].drop(index=0).reset_index(drop=True).head(20)
+            df_balance = pd.DataFrame(data_balance_sheet["quarterlyReports"])
+            df_balance = df_balance[['fiscalDateEnding','totalAssets','totalLiabilities']]
 
-        df_balance = pd.DataFrame(data_balance_sheet["quarterlyReports"])
-        df_balance = df_balance[['fiscalDateEnding','totalAssets','totalLiabilities']]
+            df_income_statement = pd.DataFrame(data_income_statement["quarterlyReports"])
+            df_income_statement = df_income_statement[['fiscalDateEnding','grossProfit','totalRevenue','netIncome']]
 
-        df_income_statement = pd.DataFrame(data_income_statement["quarterlyReports"])
-        df_income_statement = df_income_statement[['fiscalDateEnding','grossProfit','totalRevenue','netIncome']]
-
-        df = df_earning.join(df_balance.set_index('fiscalDateEnding'), on='fiscalDateEnding').join(df_income_statement.set_index('fiscalDateEnding'), on='fiscalDateEnding')
-        df.dropna(inplace=True)
-        df.replace('None','null',inplace=True)
-        row_lists = df.apply(lambda row: row.tolist(), axis=1).tolist()
-        return row_lists
+            df = df_earning.join(df_balance.set_index('fiscalDateEnding'), on='fiscalDateEnding').join(df_income_statement.set_index('fiscalDateEnding'), on='fiscalDateEnding')
+            df.dropna(inplace=True)
+            df.replace('None','null',inplace=True)
+            row_lists = df.apply(lambda row: row.tolist(), axis=1).tolist()
+            return row_lists
+        except:
+            return []
     
     def fetch_set_fin(self):
         """return raw set financial statement of this stock (before insert to database) by scrape from www.finnomena.com"""
@@ -503,7 +533,6 @@ class Stock:
         stock_statement = {"quarter":quarter,"total_asset":total_asset,"total_debt":total_debt,"shareholder_equity":shareholder_equity,"paid_up_capital":paid_up_capital,"total_revenue":total_revenue,"net_profit":net_profit,"esp":esp,"roa":roa,"roe":roe,"net_profit_margin":net_profit_margin,"market_capitalization":market_capitalization,"p_e":p_e,"p_bv":p_bv,"dividend_yield":dividend_yield}
         df = pd.DataFrame(stock_statement)
         row_lists = df.apply(lambda row: row.tolist(), axis=1)
-
         return row_lists.to_list()
 
     def insert_set_fin(self,stock_id,finance):#already been test on TestInsertFin
@@ -592,10 +621,12 @@ class Stock:
         else:
             start = datetime.datetime.strptime(start, '%Y-%m-%d %H:%M:%S')# convert string to datetime obj
             data = yf.download(tickers=name, start=start, interval = interval)
-
-        data = data.drop(["Adj Close"],axis = 1)
-        data["Date"] = data.index.strftime('%Y-%m-%d %X') # convert pandas timestamp to string 
-        return data.values.tolist() #return value in type list
+        try:
+            data = data.drop(["Adj Close"],axis = 1)
+            data["Date"] = data.index.strftime('%Y-%m-%d %X') # convert pandas timestamp to string 
+            return data.values.tolist() #return value in type list
+        except:
+            return None
 
     def insert_stock_price(self,data,interval):#already been test on TestInsertStockPrice
         """insert price data to specific price table in database"""
@@ -620,10 +651,10 @@ class Stock:
         if not interval in available_interval:
             raise ValueError(f"The interval {interval} is not available. The available interval are {','.join(available_interval)}")
         date = self.latest_update_time(interval=interval)
-        try:
-            self.insert_stock_price(self.get_stock_and_crypto_data(self.symbol+self.price,date,interval),interval)
-        except (AttributeError, TypeError) as e:
-            return f"Cannot fetch {self.symbol} price in {interval} interval"
+        data = self.get_stock_and_crypto_data(self.symbol+self.price,date,interval)
+        if data == None:
+            return 'fail'
+        self.insert_stock_price(data,interval)
         
     def get_all_news(self,**kwargs):#already been test on TestGetAllNews
         """return all of this stock's news database by specific interval"""
@@ -676,7 +707,8 @@ class Stock:
         data = cursor.fetchall()
         conn.close()
         return data
-    
+
+
 
 class News:
 
@@ -1157,7 +1189,6 @@ class Location:
     
     def fetch_location(self,symbol):#TestFetchLocation
         """fetch location in this stock from news and insert into database"""
-        # count = 0
         stock_id = self.get_stock_id(symbol)
         news = self.get_all_stock_news_id(symbol)
         processed_news = self.get_all_process_news_id(symbol)
@@ -1183,6 +1214,3 @@ class Location:
                     location_id = self.get_location_id(lo)
                     self.insert_many_location(stock_id,i,location_id)
                     print('----------------100%----------------')
-                # count += 1
-                # if count >= 10:
-                #     return 'Done'
